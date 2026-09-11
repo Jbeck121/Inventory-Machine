@@ -1,0 +1,75 @@
+Assist
+*claude*
+*Claude*
+odd-test*
+*.zim
+config.ini
+graphify-out
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+.env/          # folder (not the .env file — see below)
+
+# --- Environment variables ---
+.env
+*.env
+!.env.example  # explicitly keep the template
+
+# --- Flask / instance config ---
+instance/
+*.cfg
+
+# --- Distribution / packaging ---
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+
+# --- Testing ---
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# --- IDEs ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Container data (bind mounts) ---
+data/
+!data/.gitkeep
+
+# --- StarDict dictionaries (user-supplied; never commit dict files) ---
+dicts/*
+!dicts/.gitkeep
+
+# --- Logs ---
+logs/
+
+# --- Database ---
+*.db
+*.sqlite3cert.pem
+key.pem
+
+# --- Syncthing Errors ---
+*sync-conflict*
+
+# --- VM-specific compose files (contain private IPs, not for public repo) ---
+docker-compose.app.yml
+docker-compose.services.yml
+docker-compose.kiwix.yml
