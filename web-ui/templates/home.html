@@ -5,13 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home page</title>
 </head>
-<body>
-    <h2>Inventory Search</h2>
-    <form>
-        <label for="inventory">Search for:</label>
-        <input type="text" id="inventory" name ="search"/>
-        <button>Search</button>
-    </form>
-    <h3>you searched for : {{search_term}}</h3>
-</body>
+    <body>
+        <h2>Inventory Search</h2>
+        <form>
+            <label for="inventory">Search for:</label>
+            <input type="text" id="inventory" name ="search"/>
+            <button>Search</button>
+        </form>
+
+        <form>
+            <label for="location">Locations:</label>
+            <select id="location" name="location">
+                <option value="">All Locations</option>
+                {% for location_option in locations %}
+                    <option value="{{location_option}}">{{location_option}}</option>
+                {% endfor %}
+            </select>
+            <label for="category" >Item Categories:</label>
+            <select id="category" name="category">
+                <option value="">All Categories</option>
+                {% for category_option in categories %}
+                    <option value="{{category_option}}">{{category_option}}</option>
+                {% endfor %}
+            </select>
+            <button>Filter Search</button>
+        </form>
+
+        {% if results %}
+        <h3>Inventory Found</h3>
+        <ul>
+            {% for item in results %}
+                <li>{{ item["name"] }} — {{ item["category"] }} — {{ item["location"] }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+            <p>Search a name or pick filters to see inventory.</p>
+        {% endif %}
+    </body>
 </html>
