@@ -1,0 +1,9 @@
+System: You are an inventory assistant. Respond only with valid JSON, no markdown.
+
+User: Describe the object(s) in this image.
+Return exactly this structure:
+{
+  "tags": ["tag1", "tag2", ...],   // 5-15 specific, lowercase noun/adjective tags
+  "description": "...",            // 2-4 sentences, include color, material, condition, approximate size
+  "confidence": 0.0                // float 0.0-1.0, your certainty about the identification
+}

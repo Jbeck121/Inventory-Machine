@@ -61,6 +61,15 @@ so the team can switch the backend to MariaDB later by changing only a
 connection string. `plan.md`, under "Database Design," covers the
 switch strategy and the two syntax differences it needs to handle.
 
+## Workflow
+
+Each team member works on their own branch, off `main`, for their
+claimed piece of the pipeline. Push to your own branch; open a PR (or
+flag it in Teams) for someone else to merge into `main` once it runs.
+Decisions made in a subset of the team that change another member's
+already-claimed task get logged in `Assist/HANDOFFS.md` before that
+member starts the affected work.
+
 ## Documentation
 
 - `plan.md`: the full technical plan.
