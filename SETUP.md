@@ -7,8 +7,10 @@ embedding models running locally.
 ## 1. Install Ollama and pull the models
 
 Follow `Ollama_Setup.md`. It covers installing Ollama and pulling the
-three models: `minicpm-v4.6`, `granite4.2:3b`, and
-`qwen3-embedding:0.6b`. Check each step before you continue.
+two vision models (`minicpm-v4.5` default, `minicpm-v4.6` fallback)
+and the embedding model (`qwen3-embedding:0.6b`). `granite4.2:3b` is
+optional -- it only confirms Ollama itself works, it is not a
+pipeline dependency. Check each step before you continue.
 
 ## 2. Create a virtual environment and install the project
 
