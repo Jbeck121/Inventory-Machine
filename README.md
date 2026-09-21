@@ -13,13 +13,29 @@ Baldwin, Kian Dong, and Reece Clem.
 
 ## Status
 
-The project is in the planning stage. No pipeline code exists yet. The
-plan and the SQL schemas are complete and ready to build against.
+The project has a working package under `inventory_machine/` and a test
+suite of 12 passing tests. The remaining pipeline steps (preprocess,
+score, cluster, label, write) are still in progress.
 
+- `inventory_machine/` holds the package code: `config.py` (config
+  loader and validation), `db.py` (data access layer for SQLite and
+  MariaDB), `pipeline.py` (logging setup and entry point),
+  `vision/client.py` (Ollama vision client), and `embedding/client.py`
+  (Ollama embedding client with ChromaDB storage).
+- `pyproject.toml` makes the package installable with
+  `pip install -e ".[dev]"`.
+- `config.ini.example` shows every config section the code reads. Copy
+  it to `config.ini` to run locally.
+- `prompts/vision_prompt.txt` is the prompt template the vision client
+  sends with each photo.
+- `tests/` holds `test_db.py`, `test_vision.py`, and
+  `test_embedding.py`. Run them with `pytest tests/`.
 - `plan.md` holds the full technical plan: architecture, AI models, the
   database design, the QR label strategy, the config file, the
   processing pipeline, and the presentation plan.
 - `schema/` holds the SQL schema files.
+
+See `SETUP.md` for install and test instructions.
 
 ## Scope: MVP vs. ideal final
 
@@ -73,6 +89,8 @@ member starts the affected work.
 ## Documentation
 
 - `plan.md`: the full technical plan.
+- `SETUP.md`: install and test instructions for a clean checkout.
+- `Ollama_Setup.md`: how to install Ollama and pull the models.
 - `schema/schema.sql`: the core MVP schema.
 - `schema/option_a_home_organizer.sql`, `schema/option_b_university_it.sql`,
   `schema/option_c_spark_labs.sql`: one full example schema per domain
