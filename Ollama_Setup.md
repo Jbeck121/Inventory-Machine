@@ -25,17 +25,20 @@ found" error, close and reopen your terminal/command-prompt
 
 ## 3. Pull the models
 
-A. ollama pull minicpm-v4.6
-(around 5.5gb, takes like 5 minutes)
+A. `ollama pull minicpm-v4.5`
+(the default vision model in config.ini.example; around 5.5gb, takes
+like 5 minutes)
 
-then 
+then
 
-B. ollama pull qwen3-embedding:0.6b
+B. `ollama pull minicpm-v4.6`
+(the fallback vision model, for hardware that can't run minicpm-v4.5 --
+config.ini.example's `vision_model_fallback` setting)
 
-then 
+then
 
-C. ollama pull granite4.2:3b
-(around 2.2gb, takes about 3-4 minutes)
+C. `ollama pull qwen3-embedding:0.6b`
+(the embedding model)
 
 D. once downloaded, if everything was done correctly, prompt window 
 should allow input to chat with the model.
@@ -51,12 +54,14 @@ E. use ollama list to see if all 3 were pulled correctly, should show size, ID, 
 again or remove it and pull it again
 -removing the model = rm minicpm-v4.6
 
-## 4. Testing granite
+## 4. Optional: testing Ollama itself
 
-Run: ollama run granite4.2:3b
+`granite4.2:3b` is not a pipeline dependency. It's a small chat model
+useful only for confirming Ollama itself works before touching the
+vision/embedding models above.
+
+Run: `ollama pull granite4.2:3b` (around 2.2gb, takes about 3-4 minutes),
+then `ollama run granite4.2:3b`.
 
 Should bring up the granite library to type, this step was done incase after you pulled granite 
 and it didn't automatically pull up on the window
-
-
-
