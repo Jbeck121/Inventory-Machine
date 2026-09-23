@@ -1,0 +1,53 @@
+[paths]
+input_dir = ./inventory_input
+qr_output_dir = ./inventory_output/qr_codes
+log_file = ./logs/inventory_machine.log
+
+[database]
+backend = sqlite
+sqlite_path = ./inventory.db
+; used only when backend = mariadb
+mariadb_dsn = mariadb://user:pass@host:3306/inventory
+
+[chroma]
+persist_dir = ./chroma_store
+collection_name = inventory_items
+
+[models]
+vision_model = minicpm-v4.5
+; fallback for hardware that cannot run minicpm-v4.5
+vision_model_fallback = minicpm-v4.6
+embedding_model = qwen3-embedding:0.6b
+ollama_base_url = http://localhost:11434
+
+[vision]
+max_retries = 3
+image_max_px = 1024
+json_mode = true
+; prompt template file path -- keeps the ini short
+prompt_template = ./prompts/vision_prompt.txt
+
+[confidence]
+self_report_weight = 0.6
+tag_coherence_weight = 0.4
+low_confidence_threshold = 0.5
+
+[clustering]
+min_cluster_size = 2
+min_samples = 1
+; epsilon = 0 means HDBSCAN auto-selects
+epsilon = 0.0
+
+[labels]
+qr_base_url = http://localhost:5000
+label_width_mm = 62
+label_height_mm = 29
+
+[location]
+folder_separator = >
+; comma-separated strings to strip from folder names before use as location
+strip_prefixes = img_, scan_, batch_
+
+[output]
+timestamp_timezone = local
+timestamp_format = %Y-%m-%d %H:%M:%S

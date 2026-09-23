@@ -55,8 +55,11 @@ flowchart TD
     E --> K[QR label generator]
     I --> K
     K --> L["Printed labels: description + QR code"]
+    E --> M["Web app: search, filters, in-browser QR camera scan"]
+    I --> M
 
     B --> B1[Resize and normalize]
+    B --> B2["EXIF: date taken, GPS (optional)"]
     D --> D1[Tags]
     D --> D2[Prose description]
     D --> D3[Confidence score]
@@ -172,6 +175,13 @@ Nested input folders join with the `folder_separator` from config
 `strip_prefixes` list removes configured prefix strings from folder
 names before the pipeline uses them.
 
+Each `images` row also carries optional `date_taken`, `gps_lat`, and
+`gps_lon` columns, extracted from the photo's EXIF data via Pillow when
+present. These record where/when the photo was taken, and stay separate
+from `locations`, which tracks physical storage placement, not capture
+geolocation. A photo with no EXIF data leaves these columns `NULL`;
+extraction failure never blocks ingestion.
+
 ---
 
 ## QR Code and Label Strategy
@@ -200,6 +210,24 @@ to set exactly one of the two, never both and never neither.
 
 Every item still keeps its own UUID and its own database row, whether or
 not it ever gets a label of its own.
+
+---
+
+## Web Application
+
+The Flask app is more than a QR-triggered lookup page. It also gives the
+team a browsable, searchable front end over the catalog:
+
+- **Search bar.** Free-text search across item tags and descriptions.
+- **In-browser QR scanning.** A page that requests camera access and
+  decodes a QR code client-side, then redirects to the matching
+  `/location/<id>` or `/item/<id>` page — an alternative to a phone's
+  native camera app for team members testing on a laptop with no camera
+  app of its own.
+- **Filterable inventory view.** A list/grid of items, filterable by
+  location, cluster, tag, and confidence flag.
+- **`/location/<location_id>`** and **`/item/<item_id>`** detail pages,
+  as described above.
 
 ---
 
@@ -326,6 +354,12 @@ def get_timestamp(cfg: configparser.ConfigParser) -> str:
 Passing `tz=None` gives local time. For a named timezone (for example
 `America/New_York`), swap in `zoneinfo.ZoneInfo` later.
 
+`images.date_taken` is a separate, independent timestamp: the photo's
+own EXIF capture time, extracted at ingestion when present, `NULL`
+otherwise. It records when the photo was taken; `date_processed`
+records when the pipeline ran. The two commonly differ, for example
+when a batch of older photos is ingested at once.
+
 ---
 
 ## Config File
@@ -334,7 +368,7 @@ Passing `tz=None` gives local time. For a named timezone (for example
 [paths]
 input_dir = ./inventory_input
 qr_output_dir = ./inventory_output/qr_codes
-log_file = ./inventory_output/run.log
+log_file = ./logs/inventory_machine.log
 
 [database]
 backend = sqlite
@@ -380,6 +414,11 @@ label_height_mm = 29
 folder_separator = >
 ; comma-separated strings to strip from folder names before use as location
 strip_prefixes = img_, scan_, batch_
+
+[output]
+; get_timestamp() reads these two keys directly
+timestamp_timezone = local
+timestamp_format = %Y-%m-%d %H:%M:%S
 ```
 
 ### Config Loading
@@ -442,7 +481,7 @@ Python 3.11+
 ├── scikit-learn            # fallback: KMeans, PCA for debug viz
 ├── mariadb (or PyMySQL)    # MariaDB driver, used only when backend = mariadb
 ├── qrcode[pil]             # QR generation
-└── flask                   # local lookup app: renders the item and location pages a QR code opens
+└── flask                   # web app: search, filters, in-browser QR scan, and the item/location pages a QR code opens
 ```
 
 ---

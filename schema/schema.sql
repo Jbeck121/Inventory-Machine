@@ -51,6 +51,10 @@ CREATE TABLE items (
 );
 
 -- An item can have more than one photo. Each row is one source photo.
+-- date_taken/gps_lat/gps_lon are optional: populated from the photo's
+-- EXIF data when present, left NULL when the source has none. They
+-- record where/when the photo was captured, separate from the
+-- locations table, which tracks the physical storage place.
 CREATE TABLE images (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id            TEXT NOT NULL REFERENCES items(id),
@@ -58,6 +62,9 @@ CREATE TABLE images (
     original_filename  TEXT NOT NULL,
     width_px           INTEGER,
     height_px          INTEGER,
+    date_taken         TEXT,
+    gps_lat            REAL,
+    gps_lon            REAL,
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
