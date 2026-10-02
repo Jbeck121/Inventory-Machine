@@ -1,5 +1,13 @@
-# generate_page.py (or your main script)
-from qrcode import generate_qr_for_sticker
+# generate_page.py 
+
+from pathlib import Path
+script_dir = Path(__file__).parent
+qrcode_module_path = script_dir / "inventory_machine" / "labels" / "qrcode.py"
+
+
+from inventory_machine.labels.qrcode import generate_qr_for_sticker
+
+
 from PIL import Image
 
 # 8.5x11

@@ -23,7 +23,7 @@ def generate_qr_for_sticker(data: str, output_path: str = "sticker_qr.png"):
     # Build QR code (minimal, reliable for tiny stickers)
     qr = qrcode.QRCode(
         version=1,
-        error_correction=qrcode.ERROR_CORRECT_L,
+        error_correction=3,
         box_size=1,
         border=4,
     )
