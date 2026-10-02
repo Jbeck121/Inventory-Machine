@@ -141,7 +141,7 @@ class Database:
             Sets PRAGMA foreign_keys = ON on this new connection.
         """
         try:
-            conn = sqlite3.connect(sqlite_path)
+            conn = sqlite3.connect(sqlite_path, check_same_thread=False)
             conn.execute("PRAGMA foreign_keys = ON")
             return conn
         except sqlite3.Error:

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home page</title>
+</head>
+    <body>
+        <h2>Inventory Search</h2>
+        <form>
+            <label for="inventory">Search for:</label>
+            <input type="text" id="inventory" name ="search"/>
+            <button>Search</button>
+        </form>
+
+        <form>
+            <label for="location">Locations:</label>
+            <select id="location" name="location">
+                <option value="">All Locations</option>
+                {% for location_option in locations %}
+                    <option value="{{ location_option['id'] }}">{{ location_option['name'] }}</option>
+                {% endfor %}
+            </select>
+            <button>Filter Search</button>
+        </form>
+
+        {% if results %}
+        <h3>Inventory Found</h3>
+        <ul>
+            {% for item in results %}
+                <li>{{ item["description"] }} — {{ item["location_name"] }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+            <p>Search a name or pick filters to see inventory.</p>
+        {% endif %}
+    </body>
+</html>
