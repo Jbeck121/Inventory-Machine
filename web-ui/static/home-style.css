@@ -1,0 +1,32 @@
+body{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    height:100vh;
+    font-family:sans-serif;
+}
+
+main{
+    border:1px solid black;
+    text-align:center;
+    padding:1rem 2rem 4rem 2rem;
+    background-color:#F6F7F5;
+    border-radius:10px;
+}
+
+h1{
+    margin-block-end:3rem;
+}
+
+form{
+    text-align:start;
+    margin-block-end:1rem;
+}
+
+form > button{
+    background-color:#2F6F63;
+    color:white;
+    padding:5px 20px;
+    border-radius:10px;
+}
