@@ -35,12 +35,12 @@ CREATE TABLE clusters (
 -- link back to one equipment_type.
 CREATE TABLE equipment_types (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT NOT NULL UNIQUE,
+    name         VARCHAR(255) NOT NULL UNIQUE,
     description  TEXT
 );
 
 CREATE TABLE items (
-    id                 TEXT PRIMARY KEY,
+    id                 VARCHAR(36) PRIMARY KEY,
     location_id        INTEGER REFERENCES locations(id),
     cluster_id         INTEGER REFERENCES clusters(id),
     equipment_type_id  INTEGER REFERENCES equipment_types(id),
@@ -52,27 +52,30 @@ CREATE TABLE items (
 
 CREATE TABLE images (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id            TEXT NOT NULL REFERENCES items(id),
+    item_id            VARCHAR(36) NOT NULL REFERENCES items(id),
     file_path          TEXT NOT NULL,
     original_filename  TEXT NOT NULL,
     width_px           INTEGER,
     height_px          INTEGER,
+    date_taken         TEXT,
+    gps_lat            REAL,
+    gps_lon            REAL,
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE tags (
     id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT NOT NULL UNIQUE
+    name  VARCHAR(255) NOT NULL UNIQUE
 );
 
 CREATE TABLE item_tags (
-    item_id  TEXT NOT NULL REFERENCES items(id),
+    item_id  VARCHAR(36) NOT NULL REFERENCES items(id),
     tag_id   INTEGER NOT NULL REFERENCES tags(id),
     PRIMARY KEY (item_id, tag_id)
 );
 
 CREATE TABLE confidence_components (
-    item_id               TEXT PRIMARY KEY REFERENCES items(id),
+    item_id               VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     self_report           REAL NOT NULL,
     tag_coherence         REAL NOT NULL,
     self_report_weight    REAL NOT NULL,
@@ -81,7 +84,7 @@ CREATE TABLE confidence_components (
 );
 
 CREATE TABLE embeddings_index (
-    item_id            TEXT PRIMARY KEY REFERENCES items(id),
+    item_id            VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     chroma_collection  TEXT NOT NULL,
     chroma_record_id   TEXT NOT NULL,
     model_name         TEXT NOT NULL,
@@ -91,7 +94,7 @@ CREATE TABLE embeddings_index (
 
 CREATE TABLE vision_model_outputs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id         TEXT NOT NULL REFERENCES items(id),
+    item_id         VARCHAR(36) NOT NULL REFERENCES items(id),
     model_name      TEXT NOT NULL,
     attempt_number  INTEGER NOT NULL,
     raw_response    TEXT NOT NULL,
@@ -101,7 +104,7 @@ CREATE TABLE vision_model_outputs (
 CREATE TABLE qr_labels (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     location_id    INTEGER REFERENCES locations(id),
-    item_id        TEXT REFERENCES items(id),
+    item_id        VARCHAR(36) REFERENCES items(id),
     label_text     TEXT NOT NULL,
     qr_url         TEXT NOT NULL,
     qr_image_path  TEXT NOT NULL,
@@ -126,7 +129,7 @@ CREATE TABLE processing_runs (
 CREATE TABLE lab_members (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     name    TEXT NOT NULL,
-    fsu_id  TEXT NOT NULL UNIQUE,
+    fsu_id  VARCHAR(255) NOT NULL UNIQUE,
     email   TEXT NOT NULL,
     role    TEXT NOT NULL CHECK (role IN ('student', 'staff', 'faculty'))
 );
@@ -189,7 +192,7 @@ CREATE TABLE project_members (
 -- cutter, the mask aligner).
 CREATE TABLE reservations (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id        TEXT NOT NULL REFERENCES items(id),
+    item_id        VARCHAR(36) NOT NULL REFERENCES items(id),
     lab_member_id  INTEGER NOT NULL REFERENCES lab_members(id),
     start_time     TEXT NOT NULL,
     end_time       TEXT NOT NULL,
@@ -201,7 +204,7 @@ CREATE TABLE reservations (
 CREATE TABLE checkouts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     reservation_id  INTEGER REFERENCES reservations(id),
-    item_id         TEXT NOT NULL REFERENCES items(id),
+    item_id         VARCHAR(36) NOT NULL REFERENCES items(id),
     lab_member_id   INTEGER NOT NULL REFERENCES lab_members(id),
     checked_out_at  TEXT NOT NULL,
     due_at          TEXT,
@@ -230,14 +233,14 @@ CREATE TABLE consumable_usage_log (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     consumable_id  INTEGER NOT NULL REFERENCES consumables(id),
     lab_member_id  INTEGER NOT NULL REFERENCES lab_members(id),
-    item_id        TEXT REFERENCES items(id),
+    item_id        VARCHAR(36) REFERENCES items(id),
     quantity_used  REAL NOT NULL,
     used_at        TEXT NOT NULL
 );
 
 CREATE TABLE maintenance_requests (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id        TEXT NOT NULL REFERENCES items(id),
+    item_id        VARCHAR(36) NOT NULL REFERENCES items(id),
     lab_member_id  INTEGER NOT NULL REFERENCES lab_members(id),
     status         TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'closed')),
     opened_at      TEXT NOT NULL,
@@ -251,7 +254,7 @@ CREATE TABLE maintenance_requests (
 -- or hazard events.
 CREATE TABLE incident_reports (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id       INTEGER REFERENCES items(id),
+    item_id       VARCHAR(36) REFERENCES items(id),
     location_id   INTEGER REFERENCES locations(id),
     reported_by   INTEGER NOT NULL REFERENCES lab_members(id),
     severity      TEXT NOT NULL CHECK (severity IN ('minor', 'moderate', 'severe')),
@@ -266,7 +269,7 @@ CREATE TABLE incident_reports (
 CREATE TABLE experiment_runs (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id       INTEGER NOT NULL REFERENCES projects(id),
-    item_id          TEXT NOT NULL REFERENCES items(id),
+    item_id          VARCHAR(36) NOT NULL REFERENCES items(id),
     lab_member_id    INTEGER NOT NULL REFERENCES lab_members(id),
     run_at           TEXT NOT NULL,
     parameters_json  TEXT,
@@ -277,8 +280,8 @@ CREATE TABLE experiment_runs (
 -- supertype/subtype split: every server is an item, but only servers
 -- carry network fields.
 CREATE TABLE server_assets (
-    item_id           TEXT PRIMARY KEY REFERENCES items(id),
-    hostname          TEXT NOT NULL UNIQUE,
+    item_id           VARCHAR(36) PRIMARY KEY REFERENCES items(id),
+    hostname          VARCHAR(255) NOT NULL UNIQUE,
     ip_address        TEXT NOT NULL,
     operating_system  TEXT NOT NULL,
     rack_location_id  INTEGER REFERENCES locations(id),
@@ -288,7 +291,7 @@ CREATE TABLE server_assets (
 -- FAA Part 107 requires a logged flight record per drone flight.
 CREATE TABLE drone_flight_logs (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id                  TEXT NOT NULL REFERENCES items(id),
+    item_id                  VARCHAR(36) NOT NULL REFERENCES items(id),
     pilot_lab_member_id      INTEGER NOT NULL REFERENCES lab_members(id),
     flown_at                 TEXT NOT NULL,
     duration_minutes         INTEGER NOT NULL,
@@ -302,7 +305,7 @@ CREATE TABLE drone_flight_logs (
 CREATE TABLE radio_licenses (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     lab_member_id  INTEGER NOT NULL REFERENCES lab_members(id),
-    callsign       TEXT NOT NULL UNIQUE,
+    callsign       VARCHAR(255) NOT NULL UNIQUE,
     license_class  TEXT NOT NULL CHECK (license_class IN ('technician', 'general', 'extra')),
     issued_at      TEXT NOT NULL,
     expires_at     TEXT

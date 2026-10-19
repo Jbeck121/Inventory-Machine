@@ -184,6 +184,17 @@ class Database:
         """
         return self._conn
 
+    def _parameterized_query(self, query: str) -> str:
+        """
+        Input: query -- SQL using SQLite-style ? bind markers.
+        Output: SQL using the active driver's bind markers.
+        Details:
+            PyMySQL uses %s markers. SQLite uses ? markers unchanged.
+        """
+        if self._backend == MARIADB_BACKEND:
+            return query.replace("?", "%s")
+        return query
+
     def execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
         """
         Input: query -- a parameterized SQL statement. params -- bind values.
@@ -195,7 +206,7 @@ class Database:
         """
         try:
             cursor = self._conn.cursor()
-            cursor.execute(query, params)
+            cursor.execute(self._parameterized_query(query), params)
             self._conn.commit()
             return cursor
         except Exception:
@@ -216,7 +227,7 @@ class Database:
         """
         try:
             cursor = self._conn.cursor()
-            cursor.execute(query, params)
+            cursor.execute(self._parameterized_query(query), params)
             return cursor.fetchone()
         except Exception:
             logger.exception("SQL fetch_one failed")
@@ -232,7 +243,7 @@ class Database:
         """
         try:
             cursor = self._conn.cursor()
-            cursor.execute(query, params)
+            cursor.execute(self._parameterized_query(query), params)
             return cursor.fetchall()
         except Exception:
             logger.exception("SQL fetch_all failed")

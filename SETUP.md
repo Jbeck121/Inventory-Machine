@@ -53,14 +53,35 @@ The example works with no edits. It uses these settings:
 
 Do not commit `config.ini`. It is machine-specific and gitignored.
 
+### Run against MariaDB
+
+Start a local MariaDB container:
+
+```sh
+podman run -d --rm --name inventory-mariadb -e MARIADB_ROOT_PASSWORD=change-me -e MARIADB_DATABASE=inventory -p 127.0.0.1:3306:3306 docker.io/library/mariadb:11
+```
+
+Set these keys in the `[database]` section of `config.ini`:
+
+```ini
+[database]
+backend = mariadb
+mariadb_dsn = mariadb://root:change-me@127.0.0.1:3306/inventory
+```
+
+The `sqlite_path` key is not used with `backend = mariadb`. Load
+`schema/option_a_home_organizer.sql` with `Database.load_schema` before
+you write inventory rows. Stop the container with
+`podman stop inventory-mariadb` when you finish.
+
 ## 4. Run the tests
 
 ```sh
 pytest tests/
 ```
 
-All 12 tests should pass. This confirms the package, the config, and
-the database layer are set up correctly.
+Without `IM_MARIADB_DSN`, pytest skips the MariaDB integration test.
+To run it, set `IM_MARIADB_DSN` to a fresh, empty MariaDB database.
 
 ## 5. Run the pipeline
 

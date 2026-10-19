@@ -45,7 +45,7 @@ CREATE TABLE asset_models (
 -- One row per cataloged, serial-tagged asset. asset_model_id links the
 -- specific unit back to its catalog entry.
 CREATE TABLE items (
-    id                TEXT PRIMARY KEY,
+    id                VARCHAR(36) PRIMARY KEY,
     location_id       INTEGER REFERENCES locations(id),
     cluster_id        INTEGER REFERENCES clusters(id),
     asset_model_id    INTEGER REFERENCES asset_models(id),
@@ -57,27 +57,30 @@ CREATE TABLE items (
 
 CREATE TABLE images (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id            TEXT NOT NULL REFERENCES items(id),
+    item_id            VARCHAR(36) NOT NULL REFERENCES items(id),
     file_path          TEXT NOT NULL,
     original_filename  TEXT NOT NULL,
     width_px           INTEGER,
     height_px          INTEGER,
+    date_taken         TEXT,
+    gps_lat            REAL,
+    gps_lon            REAL,
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE tags (
     id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT NOT NULL UNIQUE
+    name  VARCHAR(255) NOT NULL UNIQUE
 );
 
 CREATE TABLE item_tags (
-    item_id  TEXT NOT NULL REFERENCES items(id),
+    item_id  VARCHAR(36) NOT NULL REFERENCES items(id),
     tag_id   INTEGER NOT NULL REFERENCES tags(id),
     PRIMARY KEY (item_id, tag_id)
 );
 
 CREATE TABLE confidence_components (
-    item_id               TEXT PRIMARY KEY REFERENCES items(id),
+    item_id               VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     self_report           REAL NOT NULL,
     tag_coherence         REAL NOT NULL,
     self_report_weight    REAL NOT NULL,
@@ -86,7 +89,7 @@ CREATE TABLE confidence_components (
 );
 
 CREATE TABLE embeddings_index (
-    item_id            TEXT PRIMARY KEY REFERENCES items(id),
+    item_id            VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     chroma_collection  TEXT NOT NULL,
     chroma_record_id   TEXT NOT NULL,
     model_name         TEXT NOT NULL,
@@ -96,7 +99,7 @@ CREATE TABLE embeddings_index (
 
 CREATE TABLE vision_model_outputs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id         TEXT NOT NULL REFERENCES items(id),
+    item_id         VARCHAR(36) NOT NULL REFERENCES items(id),
     model_name      TEXT NOT NULL,
     attempt_number  INTEGER NOT NULL,
     raw_response    TEXT NOT NULL,
@@ -106,7 +109,7 @@ CREATE TABLE vision_model_outputs (
 CREATE TABLE qr_labels (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     location_id    INTEGER REFERENCES locations(id),
-    item_id        TEXT REFERENCES items(id),
+    item_id        VARCHAR(36) REFERENCES items(id),
     label_text     TEXT NOT NULL,
     qr_url         TEXT NOT NULL,
     qr_image_path  TEXT NOT NULL,
@@ -133,7 +136,7 @@ CREATE TABLE processing_runs (
 -- belong to a department.
 CREATE TABLE departments (
     id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT NOT NULL UNIQUE
+    name  VARCHAR(255) NOT NULL UNIQUE
 );
 
 -- IT staff: technicians, administrators, help desk agents. Distinct
@@ -141,7 +144,7 @@ CREATE TABLE departments (
 CREATE TABLE employees (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     name           TEXT NOT NULL,
-    email          TEXT NOT NULL UNIQUE,
+    email          VARCHAR(255) NOT NULL UNIQUE,
     department_id  INTEGER REFERENCES departments(id),
     job_title      TEXT
 );
@@ -152,7 +155,7 @@ CREATE TABLE employees (
 CREATE TABLE patrons (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT NOT NULL,
-    fsu_id       TEXT NOT NULL UNIQUE,
+    fsu_id       VARCHAR(255) NOT NULL UNIQUE,
     email        TEXT NOT NULL,
     patron_type  TEXT NOT NULL CHECK (patron_type IN ('student', 'faculty', 'staff'))
 );
@@ -162,7 +165,7 @@ CREATE TABLE patrons (
 -- against one, so a department can report its own IT spend.
 CREATE TABLE cost_centers (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    code           TEXT NOT NULL UNIQUE,
+    code           VARCHAR(255) NOT NULL UNIQUE,
     name           TEXT NOT NULL,
     fund_source    TEXT NOT NULL CHECK (fund_source IN ('state', 'grant', 'auxiliary', 'other')),
     department_id  INTEGER REFERENCES departments(id)
@@ -197,7 +200,7 @@ CREATE TABLE purchase_order_lines (
 
 CREATE TABLE warranties (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id           TEXT NOT NULL REFERENCES items(id),
+    item_id           VARCHAR(36) NOT NULL REFERENCES items(id),
     provider          TEXT NOT NULL,
     start_date        TEXT NOT NULL,
     end_date          TEXT NOT NULL,
@@ -218,7 +221,7 @@ CREATE TABLE software_licenses (
 CREATE TABLE license_assignments (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     license_id   INTEGER NOT NULL REFERENCES software_licenses(id),
-    item_id      TEXT NOT NULL REFERENCES items(id),
+    item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
     assigned_at  TEXT NOT NULL,
     revoked_at   TEXT
 );
@@ -227,7 +230,7 @@ CREATE TABLE license_assignments (
 -- laptop.
 CREATE TABLE asset_assignments (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id      TEXT NOT NULL REFERENCES items(id),
+    item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
     patron_id    INTEGER NOT NULL REFERENCES patrons(id),
     assigned_at  TEXT NOT NULL,
     returned_at  TEXT
@@ -235,14 +238,14 @@ CREATE TABLE asset_assignments (
 
 CREATE TABLE ticket_categories (
     id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT NOT NULL UNIQUE
+    name  VARCHAR(255) NOT NULL UNIQUE
 );
 
 -- item_id is nullable because a ticket is not always about one
 -- tracked asset (for example, an account access request).
 CREATE TABLE service_tickets (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id              TEXT REFERENCES items(id),
+    item_id              VARCHAR(36) REFERENCES items(id),
     requester_patron_id  INTEGER NOT NULL REFERENCES patrons(id),
     assigned_employee_id INTEGER REFERENCES employees(id),
     category_id          INTEGER NOT NULL REFERENCES ticket_categories(id),
@@ -263,7 +266,7 @@ CREATE TABLE ticket_comments (
 
 CREATE TABLE maintenance_history (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id      TEXT NOT NULL REFERENCES items(id),
+    item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
     employee_id  INTEGER REFERENCES employees(id),
     service_date TEXT NOT NULL,
     notes        TEXT,
@@ -272,7 +275,7 @@ CREATE TABLE maintenance_history (
 
 CREATE TABLE depreciation_schedules (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id           TEXT NOT NULL REFERENCES items(id),
+    item_id           VARCHAR(36) NOT NULL REFERENCES items(id),
     method            TEXT NOT NULL CHECK (method IN ('straight_line', 'declining_balance')),
     useful_life_months INTEGER NOT NULL,
     salvage_value     REAL NOT NULL DEFAULT 0,

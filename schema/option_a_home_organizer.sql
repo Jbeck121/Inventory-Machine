@@ -29,7 +29,7 @@ CREATE TABLE clusters (
 );
 
 CREATE TABLE items (
-    id                TEXT PRIMARY KEY,
+    id                VARCHAR(36) PRIMARY KEY,
     location_id       INTEGER REFERENCES locations(id),
     cluster_id        INTEGER REFERENCES clusters(id),
     description       TEXT NOT NULL,
@@ -40,27 +40,30 @@ CREATE TABLE items (
 
 CREATE TABLE images (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id            TEXT NOT NULL REFERENCES items(id),
+    item_id            VARCHAR(36) NOT NULL REFERENCES items(id),
     file_path          TEXT NOT NULL,
     original_filename  TEXT NOT NULL,
     width_px           INTEGER,
     height_px          INTEGER,
+    date_taken         TEXT,
+    gps_lat            REAL,
+    gps_lon            REAL,
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE tags (
     id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT NOT NULL UNIQUE
+    name  VARCHAR(255) NOT NULL UNIQUE
 );
 
 CREATE TABLE item_tags (
-    item_id  TEXT NOT NULL REFERENCES items(id),
+    item_id  VARCHAR(36) NOT NULL REFERENCES items(id),
     tag_id   INTEGER NOT NULL REFERENCES tags(id),
     PRIMARY KEY (item_id, tag_id)
 );
 
 CREATE TABLE confidence_components (
-    item_id               TEXT PRIMARY KEY REFERENCES items(id),
+    item_id               VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     self_report           REAL NOT NULL,
     tag_coherence         REAL NOT NULL,
     self_report_weight    REAL NOT NULL,
@@ -69,7 +72,7 @@ CREATE TABLE confidence_components (
 );
 
 CREATE TABLE embeddings_index (
-    item_id            TEXT PRIMARY KEY REFERENCES items(id),
+    item_id            VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     chroma_collection  TEXT NOT NULL,
     chroma_record_id   TEXT NOT NULL,
     model_name         TEXT NOT NULL,
@@ -79,7 +82,7 @@ CREATE TABLE embeddings_index (
 
 CREATE TABLE vision_model_outputs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id         TEXT NOT NULL REFERENCES items(id),
+    item_id         VARCHAR(36) NOT NULL REFERENCES items(id),
     model_name      TEXT NOT NULL,
     attempt_number  INTEGER NOT NULL,
     raw_response    TEXT NOT NULL,
@@ -89,7 +92,7 @@ CREATE TABLE vision_model_outputs (
 CREATE TABLE qr_labels (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     location_id    INTEGER REFERENCES locations(id),
-    item_id        TEXT REFERENCES items(id),
+    item_id        VARCHAR(36) REFERENCES items(id),
     label_text     TEXT NOT NULL,
     qr_url         TEXT NOT NULL,
     qr_image_path  TEXT NOT NULL,
@@ -121,7 +124,7 @@ CREATE TABLE categories (
 );
 
 CREATE TABLE item_categories (
-    item_id      TEXT NOT NULL REFERENCES items(id),
+    item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
     category_id  INTEGER NOT NULL REFERENCES categories(id),
     PRIMARY KEY (item_id, category_id)
 );
@@ -136,7 +139,7 @@ CREATE TABLE household_members (
 -- it is due back.
 CREATE TABLE borrow_log (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id              TEXT NOT NULL REFERENCES items(id),
+    item_id              VARCHAR(36) NOT NULL REFERENCES items(id),
     household_member_id  INTEGER NOT NULL REFERENCES household_members(id),
     borrowed_at          TEXT NOT NULL,
     returned_at          TEXT
@@ -145,7 +148,7 @@ CREATE TABLE borrow_log (
 -- Actions taken on an item: cleaned, repaired, discarded, replaced.
 CREATE TABLE maintenance_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id     TEXT NOT NULL REFERENCES items(id),
+    item_id     VARCHAR(36) NOT NULL REFERENCES items(id),
     event_type  TEXT NOT NULL CHECK (event_type IN ('cleaned', 'repaired', 'discarded', 'replaced')),
     event_date  TEXT NOT NULL,
     notes       TEXT
@@ -155,8 +158,8 @@ CREATE TABLE maintenance_log (
 -- this tracks a state (worn, broken), not an action taken.
 CREATE TABLE condition_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id      TEXT NOT NULL REFERENCES items(id),
-    condition    TEXT NOT NULL CHECK (condition IN ('new', 'good', 'fair', 'poor', 'broken')),
+    item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
+    condition_rating  TEXT NOT NULL CHECK (condition_rating IN ('new', 'good', 'fair', 'poor', 'broken')),
     noted_at     TEXT NOT NULL,
     notes        TEXT
 );
@@ -171,7 +174,7 @@ CREATE TABLE retailers (
 -- warranty window.
 CREATE TABLE purchase_records (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id               TEXT NOT NULL REFERENCES items(id),
+    item_id               VARCHAR(36) NOT NULL REFERENCES items(id),
     retailer_id           INTEGER REFERENCES retailers(id),
     purchase_date         TEXT NOT NULL,
     price                 REAL NOT NULL,
@@ -183,7 +186,7 @@ CREATE TABLE purchase_records (
 -- snapshots, not one fixed field on items.
 CREATE TABLE item_value_estimates (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id          TEXT NOT NULL REFERENCES items(id),
+    item_id          VARCHAR(36) NOT NULL REFERENCES items(id),
     estimated_value  REAL NOT NULL,
     currency         TEXT NOT NULL DEFAULT 'USD',
     estimated_at     TEXT NOT NULL,
@@ -194,7 +197,7 @@ CREATE TABLE item_value_estimates (
 -- out, or recycled. Distinct from borrow_log, which is temporary.
 CREATE TABLE disposal_records (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id      TEXT NOT NULL REFERENCES items(id),
+    item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
     method       TEXT NOT NULL CHECK (method IN ('sold', 'donated', 'trashed', 'recycled')),
     disposed_at  TEXT NOT NULL,
     recipient    TEXT,
@@ -204,13 +207,13 @@ CREATE TABLE disposal_records (
 CREATE TABLE insurance_policies (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     provider          TEXT NOT NULL,
-    policy_number     TEXT NOT NULL UNIQUE,
+    policy_number     VARCHAR(255) NOT NULL UNIQUE,
     coverage_start    TEXT NOT NULL,
     coverage_end      TEXT
 );
 
 CREATE TABLE item_insurance (
-    item_id     TEXT NOT NULL REFERENCES items(id),
+    item_id     VARCHAR(36) NOT NULL REFERENCES items(id),
     policy_id   INTEGER NOT NULL REFERENCES insurance_policies(id),
     PRIMARY KEY (item_id, policy_id)
 );
@@ -220,7 +223,7 @@ CREATE TABLE item_insurance (
 -- otherwise unrelated tables.
 CREATE TABLE reminders (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id        TEXT REFERENCES items(id),
+    item_id        VARCHAR(36) REFERENCES items(id),
     location_id    INTEGER REFERENCES locations(id),
     reminder_type  TEXT NOT NULL CHECK (reminder_type IN ('warranty_expiring', 'maintenance_due', 'borrow_overdue')),
     due_at         TEXT NOT NULL,
