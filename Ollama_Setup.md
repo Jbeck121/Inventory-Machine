@@ -1,67 +1,55 @@
 # Ollama Setup Guide
 
-This guide covers installing Ollama and pulling the models Inventory Machine
-uses. Follow it before running the pipeline locally.
+This guide explains how to install Ollama and pull the models that
+Inventory Machine uses. Follow these steps before you run the pipeline
+locally.
 
 ## 1. Install Ollama
 
-Go to [ollama.com/download](https://ollama.com/download) and get the
+Go to [ollama.com/download](https://ollama.com/download). Get the
 installer for your OS.
 
-- **Mac / Windows:** run the installer, follow the prompts.
+- **Mac / Windows:** Run the installer and follow the prompts.
 
-Since we are planning to use the model locally, we do not need to make an account
-or sign in, **skip/use locally**
+You do not need an account or a sign-in to use the model locally.
+Select **skip/use locally**.
 
 ## 2. Verify the install
 
-Open a terminal/command prompt/powershell and run: ollama --version
-
-Version number should be 0.34.0. If error message such as "command not found"
-may need to close and reopen the 
-
-If it prints a version number, you're good. If you get a "command not
-found" error, close and reopen your terminal/command-prompt
+Open a terminal, command prompt, or PowerShell window. Run
+`ollama --version`. The version number should be 0.34.0. If the command
+prints a version number, Ollama works. If it shows "command not found,"
+close and reopen the terminal or command prompt.
 
 ## 3. Pull the models
 
-A. `ollama pull minicpm-v4.5`
-(the default vision model in config.ini.example; around 5.5gb, takes
-like 5 minutes)
+1. Run `ollama pull minicpm-v4.5`. This is the default vision model
+   in config.ini.example. It is around 5.5gb and takes about 5 minutes
+   to pull.
+2. Run `ollama pull minicpm-v4.6`. This is the fallback vision model
+   for hardware that cannot run minicpm-v4.5. The
+   `vision_model_fallback` setting in config.ini.example names it.
+3. Run `ollama pull qwen3-embedding:0.6b`. This is the embedding model.
+4. After the download, enter input in the prompt window to chat with
+   the model if the setup worked.
+   These model commands are the ones used here. Run `/?` for more:
+   - `/bye` = exit
+   - `/show` = show model info
+   - `/clear` = clear session context
+   - `/?` = show shortcuts
+5. Run `ollama list` to check all 3 models. The output should show each
+   model's size, ID, name, and modification time.
 
-then
-
-B. `ollama pull minicpm-v4.6`
-(the fallback vision model, for hardware that can't run minicpm-v4.5 --
-config.ini.example's `vision_model_fallback` setting)
-
-then
-
-C. `ollama pull qwen3-embedding:0.6b`
-(the embedding model)
-
-D. once downloaded, if everything was done correctly, prompt window 
-should allow input to chat with the model.
-Model commands (theres more, but these are the ones I used, run /? for the list)
--/bye = exit
--/show = shows model info
--/clear = clear session context
--/? = for shortcuts
-
-E. use ollama list to see if all 3 were pulled correctly, should show size, ID, name, and when modified
-
-**If error message labelling "digest mismatch" then you may need to to pull that model
-again or remove it and pull it again
--removing the model = rm minicpm-v4.6
+If you see a "digest mismatch" error, pull that model again. You can
+also remove the model and pull it again. To remove it, run
+`ollama rm minicpm-v4.6`.
 
 ## 4. Optional: testing Ollama itself
 
-`granite4.2:3b` is not a pipeline dependency. It's a small chat model
-useful only for confirming Ollama itself works before touching the
-vision/embedding models above.
+`granite4.2:3b` is not a pipeline dependency. It is a small chat model
+that confirms Ollama works before you use the vision and embedding
+models above.
 
-Run: `ollama pull granite4.2:3b` (around 2.2gb, takes about 3-4 minutes),
-then `ollama run granite4.2:3b`.
-
-Should bring up the granite library to type, this step was done incase after you pulled granite 
-and it didn't automatically pull up on the window
+Run `ollama pull granite4.2:3b` (around 2.2gb, about 3-4 minutes).
+Then run `ollama run granite4.2:3b`. This command opens the granite
+library for input if the pull did not open its window automatically.

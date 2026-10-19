@@ -18,11 +18,11 @@ split between the MVP and the ideal final build.
 
 ## Implementation Options Under Consideration
 
-The course requires 15 to 30 normalized tables. The team does not want to
-pad the schema with tables that do not model a real thing. Instead, the
-team picked three real inventory domains, sized each schema honestly, and
-will choose the option whose schema, after review, best fits the
-project's scope and the team's access to real data.
+The course requires 15 to 30 normalized tables. The team does not want
+tables that model nothing real. The team chose three real inventory
+domains and sized each schema honestly. After review, the team will
+choose the schema that best fits the project's scope and its access to
+real data.
 
 The `schema/` directory holds one full, standalone SQL schema per
 option, plus the shared core schema every option builds on.
@@ -122,13 +122,14 @@ text-only model. It does not need a multimodal one.
 
 ### Clustering
 
-HDBSCAN groups the vectors ChromaDB holds. HDBSCAN needs no
-pre-set cluster count, and it marks outliers as noise instead of forcing
-them into a cluster. This fits a household or lab inventory, where many
+HDBSCAN groups the vectors in ChromaDB. It does not need a preset
+cluster count. It marks outliers as noise rather than forcing them
+into a cluster. This suits a household or lab inventory, where many
 items have no close match. Noise items keep `cluster_id` set to `NULL`.
-After clustering, the pipeline sends the 3 most central items in each
-cluster back to the vision model, with a short prompt that asks for a
-2-4 word label for the group.
+
+After clustering, the pipeline sends the 3 most central items in
+each cluster to the vision model. A short prompt asks for a 2-4 word
+group label.
 
 ---
 
@@ -179,12 +180,12 @@ Nested input folders join with the `folder_separator` from config
 `strip_prefixes` list removes configured prefix strings from folder
 names before the pipeline uses them.
 
-Each `images` row also carries optional `date_taken`, `gps_lat`, and
-`gps_lon` columns, extracted from the photo's EXIF data via Pillow when
-present. These record where/when the photo was taken, and stay separate
-from `locations`, which tracks physical storage placement, not capture
-geolocation. A photo with no EXIF data leaves these columns `NULL`;
-extraction failure never blocks ingestion.
+Each `images` row also has optional `date_taken`, `gps_lat`, and
+`gps_lon` columns. Pillow gets these values from the photo's EXIF data
+when present. They record where and when the camera took the photo.
+The `locations` table tracks physical storage, not the photo's
+capture location. If a photo has no EXIF data, these columns stay
+`NULL`. An EXIF extraction failure never stops ingestion.
 
 ---
 
@@ -201,10 +202,10 @@ container usually holds several items. The QR code encodes a URL:
 <BASE_URL>/location/<location_id>
 ```
 
-A phone camera reads the code and opens a page that lists every item
-stored at that location, with a link to each item's own record. This
-matches how the label works in practice: a person finds the physical
-container first, then looks inside it for the specific item.
+A phone camera reads the code and opens a page with every item at that
+location. The page links to each item's record. This matches how the
+label works: a person finds the physical container before looking
+inside it for the specific item.
 
 An item can also get its own label when it lives outside any container,
 for example a single large piece of equipment. The `qr_labels` table
@@ -223,11 +224,11 @@ The Flask app is more than a QR-triggered lookup page. It also gives the
 team a browsable, searchable front end over the catalog:
 
 - **Search bar.** Free-text search across item tags and descriptions.
-- **In-browser QR scanning.** A page that requests camera access and
-  decodes a QR code client-side, then redirects to the matching
-  `/location/<id>` or `/item/<id>` page — an alternative to a phone's
-  native camera app for team members testing on a laptop with no camera
-  app of its own.
+- **In-browser QR scanning.** A page requests camera access and reads
+  a QR code in the browser. It then redirects to the matching
+  `/location/<id>` or `/item/<id>` page. Team members can use this
+  instead of a phone's camera app when they test on a laptop without
+  a camera app.
 - **Filterable inventory view.** A list/grid of items, filterable by
   location, cluster, tag, and confidence flag.
 - **`/location/<location_id>`** and **`/item/<item_id>`** detail pages,
@@ -239,12 +240,11 @@ team a browsable, searchable front end over the catalog:
 
 ### SQLite for development, MariaDB for production
 
-The team builds the schema and the data access layer against SQLite
-first. Every SQL call in the codebase goes through one data access
-layer. The team switches the backend to MariaDB later by changing a
-connection string in the config file. No other code changes, because no
-code outside the data access layer issues SQL directly, and the table
-and column shapes stay the same on both backends.
+The team first builds the schema and data access layer against SQLite.
+Every SQL call goes through one data access layer. Later, the team
+changes a connection string in the config file to switch to MariaDB.
+No other code must change. No code outside the data access layer calls
+SQL directly, and both backends use the same table and column shapes.
 
 Three syntax differences carry across the switch, and the data access
 layer, not the schema files, handles them:
@@ -254,11 +254,11 @@ layer, not the schema files, handles them:
 2. `datetime('now')` (SQLite) becomes `CURRENT_TIMESTAMP` (MariaDB).
 3. `?` bind markers (SQLite) become `%s` (PyMySQL).
 
-The schema files themselves stay portable. MariaDB cannot index a
-`TEXT` column without a prefix length, so UUID keys use `VARCHAR(36)`
-and unique names use `VARCHAR(255)`; SQLite accepts both. No column
-uses a MariaDB reserved word as its name (Option A's condition column
-is `condition_rating`). All four schema files load on MariaDB 11.
+The schema files remain portable. MariaDB cannot index a `TEXT` column
+without a prefix length. Thus, UUID keys use `VARCHAR(36)` and unique
+names use `VARCHAR(255)`. SQLite accepts both. No column uses a MariaDB
+reserved word as its name (Option A's condition column is
+`condition_rating`). All four schema files load on MariaDB 11.
 
 ### Core Tables (all options)
 
@@ -293,11 +293,12 @@ extra tables)
 `item_value_estimates`, `disposal_records`, `insurance_policies`,
 `item_insurance`, `reminders`.
 
-This models a full household-inventory lifecycle: a curated category
-tree apart from AI tags, lending between household members, condition
-history apart from maintenance actions, purchase and warranty records,
-end-of-life disposal, value estimates for insurance, and a reminders
-table that surfaces due dates across the other tables.
+This covers the full household-inventory lifecycle. A curated category
+tree stays separate from AI tags. The tables track loans between
+household members, condition history apart from maintenance actions,
+purchase and warranty records, end-of-life disposal, and value
+estimates for insurance. A reminders table shows due dates from the
+other tables.
 
 **Option B: university IT asset management**
 (`schema/option_b_university_it.sql`, 17 extra tables)
@@ -308,13 +309,15 @@ table that surfaces due dates across the other tables.
 `ticket_categories`, `service_tickets`, `ticket_comments`,
 `maintenance_history`, `depreciation_schedules`.
 
-This models a real university IT department: a catalog of asset models
-apart from serialized units, purchase orders split into line items,
-software license seats tracked apart from hardware, a ticket system with
-categories and a comment history, and depreciation schedules for
-accounting. `patrons` (students, faculty, staff who request support)
-stays separate from `employees` (the IT staff who manage assets and work
-tickets).
+This covers a real university IT department. An asset model catalog
+stays separate from serialized units. Purchase orders have line items.
+Software license seats stay separate from hardware. The ticket system
+has categories and a comment history.
+
+Depreciation schedules support accounting. The `patrons` table
+holds students, faculty, and staff who request support. These patrons
+stay separate from the `employees` table, which holds the IT staff
+who manage assets and work tickets.
 
 **Option C: FSU Spark Labs** (`schema/option_c_spark_labs.sql`, 19 extra
 tables)
@@ -326,17 +329,19 @@ tables)
 `incident_reports`, `experiment_runs`, `server_assets`,
 `drone_flight_logs`, `radio_licenses`.
 
-This design follows Spark Labs' actual equipment: 3D printers and print
-supplies, servers, an arcade cabinet, soldering and other hand-tool
-hardware, drones, radio systems, and an active photolithography research
-effort. A few tables map directly to that mix: `server_assets` extends
-only the items that are servers, `drone_flight_logs` covers FAA Part 107
-flight records, `radio_licenses` covers FCC operator licenses tied to a
-lab member, and `experiment_runs` logs a research process run (a
-photolithography exposure, a print job) against the project it supports.
-`consumables` and `consumable_stock` track filament, resin, and solder
-stock by quantity, apart from the durable, individually tagged
-equipment items.
+This design follows Spark Labs' actual equipment: 3D printers and
+print supplies, servers, an arcade cabinet, soldering and other
+hand-tool hardware, drones, and radio systems. It also covers active
+photolithography research. Several tables match that mix.
+
+The `server_assets` table extends only items that are servers.
+The `drone_flight_logs` table holds FAA Part 107 flight records.
+The `radio_licenses` table holds FCC operator licenses linked to a
+lab member. The `experiment_runs` table logs a research process run,
+such as a photolithography exposure or print job, against its project.
+The `consumables` and `consumable_stock` tables track filament,
+resin, and solder stock by quantity. Durable equipment items have
+individual tags.
 
 ### ChromaDB Integration
 
@@ -365,11 +370,11 @@ def get_timestamp(cfg: configparser.ConfigParser) -> str:
 Passing `tz=None` gives local time. For a named timezone (for example
 `America/New_York`), swap in `zoneinfo.ZoneInfo` later.
 
-`images.date_taken` is a separate, independent timestamp: the photo's
-own EXIF capture time, extracted at ingestion when present, `NULL`
-otherwise. It records when the photo was taken; `date_processed`
-records when the pipeline ran. The two commonly differ, for example
-when a batch of older photos is ingested at once.
+`images.date_taken` is a separate timestamp for the photo's EXIF
+capture time. The pipeline extracts it during ingestion when present.
+Otherwise, it stays `NULL`. It records when the camera took the photo.
+`date_processed` records when the pipeline ran. These times often
+differ when the pipeline ingests a batch of older photos at once.
 
 ---
 
@@ -457,10 +462,11 @@ def get_confidence_weights(cfg: configparser.ConfigParser) -> tuple[float, float
     return w1, w2
 ```
 
-Weight validation runs at startup, not at scoring time, so a bad config
-fails fast. The pipeline passes the `cfg` object around instead of
-re-reading the file, which also makes testing easier: a test can build a
-`ConfigParser` from a string instead of writing a file to disk.
+The pipeline validates weights at startup rather than during scoring.
+A bad config fails fast. The pipeline passes the `cfg` object to each
+step rather than reading the file again. This also makes tests easier:
+a test can build a `ConfigParser` from a string without writing a file
+to disk.
 
 ---
 
@@ -515,9 +521,9 @@ Python 3.11+
    model's self-reported confidence, using the configured weights.
 6. **Cluster.** Run HDBSCAN on the vectors ChromaDB holds. Noise items
    keep `cluster_id` set to `NULL`.
-7. **Label clusters.** For each cluster, send the tags of its 3 most
-   central items back to the vision model, with a prompt that asks for
-   a 2-4 word group label.
+7. **Label clusters.** Send the tags of each cluster's 3 most central
+   items to the vision model. Use a prompt that asks for a 2-4 word
+   group label.
 8. **Write to the database.** Insert rows into `items`, `images`, `tags`,
    `item_tags`, `clusters`, and `confidence_components`, through the
    data access layer.
@@ -530,10 +536,11 @@ Python 3.11+
 
 ## Presentation Plan
 
-**Slides.** The Entity-Relationship Diagram (ERD) for the chosen schema,
-the SQLite-to-MariaDB switch strategy, the ChromaDB vector store and how
-it connects to the relational schema, and the key design decisions:
-normalization choices, confidence scoring, and clustering.
+**Slides.** Show the Entity-Relationship Diagram (ERD) for the chosen
+schema and the SQLite-to-MariaDB switch strategy. Show the ChromaDB
+vector store and its link to the relational schema. Cover the key
+design decisions: normalization choices, confidence scoring, and
+clustering.
 
 **Demonstration.** Run the pipeline against a small sample photo set,
 live. Show the populated SQLite database. Run a few queries and reports
