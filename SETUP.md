@@ -1,21 +1,20 @@
 # Setup Guide
 
-This guide gets Inventory Machine running from a clean checkout.
-Complete the Ollama steps first. The pipeline needs the vision and
-embedding models running locally.
+This guide helps you run Inventory Machine from a clean checkout.
+Complete the Ollama steps first. Run the vision and embedding models
+locally for the pipeline.
 
 ## 1. Install Ollama and pull the models
 
-Follow `Ollama_Setup.md`. It covers installing Ollama and pulling the
-two vision models (`minicpm-v4.5` default, `minicpm-v4.6` fallback)
-and the embedding model (`qwen3-embedding:0.6b`). `granite4.2:3b` is
-optional -- it only confirms Ollama itself works, it is not a
-pipeline dependency. Check each step before you continue.
+Follow `Ollama_Setup.md` to install Ollama and pull two vision models:
+`minicpm-v4.5` (default) and `minicpm-v4.6` (fallback). Also pull the
+embedding model `qwen3-embedding:0.6b`. The optional `granite4.2:3b`
+model only confirms that Ollama works. The pipeline does not need it.
+Check each step before you continue.
 
 ## 2. Create a virtual environment and install the project
 
-Run these commands from the repository root. Python 3.11 or later is
-required.
+Run these commands from the repository root. Use Python 3.11 or later.
 
 ```sh
 python -m venv .venv
@@ -69,10 +68,10 @@ backend = mariadb
 mariadb_dsn = mariadb://root:change-me@127.0.0.1:3306/inventory
 ```
 
-The `sqlite_path` key is not used with `backend = mariadb`. Load
+The `sqlite_path` key has no effect with `backend = mariadb`. Load
 `schema/option_a_home_organizer.sql` with `Database.load_schema` before
-you write inventory rows. Stop the container with
-`podman stop inventory-mariadb` when you finish.
+you write inventory rows. When you finish, stop the container with
+`podman stop inventory-mariadb`.
 
 ## 4. Run the tests
 
@@ -89,5 +88,5 @@ To run it, set `IM_MARIADB_DSN` to a fresh, empty MariaDB database.
 python -m inventory_machine.pipeline
 ```
 
-The pipeline loads `config.ini`, sets up logging to the file in
+The pipeline loads `config.ini`, writes logs to the file in
 `[paths] log_file`, and creates the output directories.
