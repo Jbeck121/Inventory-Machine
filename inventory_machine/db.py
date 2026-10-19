@@ -3,9 +3,8 @@ Author: DbLayer
 Date:   2026
 
 Description:
-    Single data access layer for Inventory Machine. Opens one SQLite
-    or MariaDB connection from config. Every SQL call goes through
-    this module.
+    This module opens one SQLite or MariaDB connection from config.
+    Every SQL call uses this single Inventory Machine data access layer.
 """
 # Imports
 import configparser
@@ -27,9 +26,9 @@ def adapt_schema_for_mariadb(sql: str) -> str:
     Input: sql -- SQLite-flavored schema text.
     Output: the same text with MariaDB syntax.
     Details:
-        Replaces INTEGER PRIMARY KEY AUTOINCREMENT with
-        INTEGER PRIMARY KEY AUTO_INCREMENT. Replaces datetime('now')
-        with CURRENT_TIMESTAMP. Schema files stay SQLite-flavored.
+        Changes INTEGER PRIMARY KEY AUTOINCREMENT to
+        INTEGER PRIMARY KEY AUTO_INCREMENT. Changes datetime('now')
+        to CURRENT_TIMESTAMP. Schema files retain SQLite syntax.
     """
     return sql.replace(
         "INTEGER PRIMARY KEY AUTOINCREMENT",
@@ -42,8 +41,8 @@ def _parse_mariadb_dsn(dsn: str) -> dict:
     Input: dsn -- a URL of the form mariadb://user:pass@host:port/dbname.
     Output: a dict with host, port, user, password, and database.
     Details:
-        Raises ValueError when the scheme is not mariadb, or when the
-        host or database name is missing.
+        Raises ValueError if the scheme is not mariadb or if
+        the host or database name is missing.
     """
     parsed = urlparse(dsn)
     if parsed.scheme != MARIADB_BACKEND:
@@ -67,7 +66,7 @@ def _split_sql_statements(sql: str) -> list[str]:
     Input: sql -- a schema script with one or more statements.
     Output: a list of non-empty statements.
     Details:
-        Splits on semicolons. Schema files do not put a semicolon
+        Splits SQL at semicolons. Schema files have no semicolons
         inside a string or a comment.
     """
     statements = []
@@ -80,11 +79,11 @@ def _split_sql_statements(sql: str) -> list[str]:
 
 def _is_pragma_statement(statement: str) -> bool:
     """
-    Input: statement -- one SQL statement. Leading comments are allowed.
+    Input: statement -- one SQL statement, which can start with comments.
     Output: True when the first real command is PRAGMA.
     Details:
-        MariaDB does not accept SQLite PRAGMA lines. load_schema skips
-        those lines on the MariaDB path.
+        MariaDB does not accept SQLite PRAGMA lines.
+        load_schema skips those lines on the MariaDB path.
     """
     for line in statement.splitlines():
         stripped = line.strip()
@@ -97,17 +96,16 @@ def _is_pragma_statement(statement: str) -> bool:
 # Classes
 class Database:
     """
-    Owns the SQL connection for the project.
-    Other modules call this class. They do not open a connection.
+    This class owns the project's SQL connection.
+    Other modules use this class instead of opening another connection.
     """
-
     def __init__(self, cfg: configparser.ConfigParser):
         """
         Input: cfg -- a loaded ConfigParser with a [database] section.
         Output: None.
         Details:
-            Reads [database] backend from cfg. sqlite opens sqlite_path.
-            mariadb opens mariadb_dsn through a lazy PyMySQL import.
+            Reads [database] backend from cfg. The sqlite backend opens
+            sqlite_path. The mariadb backend opens mariadb_dsn with a lazy PyMySQL import.
         """
         try:
             backend = cfg.get("database", "backend")
@@ -153,8 +151,8 @@ class Database:
         Input: dsn -- a mariadb:// connection URL.
         Output: an open PyMySQL connection.
         Details:
-            Imports PyMySQL only on this path. The sqlite path does
-            not need PyMySQL installed.
+            Imports PyMySQL only for MariaDB.
+            The sqlite path does not need PyMySQL.
         """
         try:
             import pymysql
@@ -179,8 +177,8 @@ class Database:
         Input: None.
         Output: the open database connection.
         Details:
-            Returns the connection this object opened at init. Callers
-            must not open a second connection.
+            Returns the connection that this object opened at init.
+            Callers must not open another connection.
         """
         return self._conn
 
@@ -200,9 +198,9 @@ class Database:
         Input: query -- a parameterized SQL statement. params -- bind values.
         Output: the cursor after the statement runs.
         Details:
-            Binds params through the driver. Does not build SQL by string
-            join. Commits after a successful run. Callers can read
-            cursor.lastrowid.
+            The driver binds params. This method does not join strings
+            to build SQL. It commits after success.
+            Callers can read cursor.lastrowid.
         """
         try:
             cursor = self._conn.cursor()
@@ -222,8 +220,8 @@ class Database:
         Input: query -- a parameterized SQL statement. params -- bind values.
         Output: one row as a tuple, or None when no row matches.
         Details:
-            Binds params through the driver. Does not build SQL by string
-            join.
+            The driver binds params. This method does not join strings
+            to build SQL.
         """
         try:
             cursor = self._conn.cursor()
@@ -238,8 +236,8 @@ class Database:
         Input: query -- a parameterized SQL statement. params -- bind values.
         Output: every matching row as a list of tuples.
         Details:
-            Binds params through the driver. Does not build SQL by string
-            join.
+            The driver binds params. This method does not join strings
+            to build SQL.
         """
         try:
             cursor = self._conn.cursor()
@@ -255,7 +253,7 @@ class Database:
         Output: True when the table exists in the open database.
         Details:
             Reads sqlite_master on SQLite and information_schema on
-            MariaDB, so callers stay free of backend-specific SQL.
+            MariaDB. Callers do not need backend-specific SQL.
         """
         if self._backend == SQLITE_BACKEND:
             query = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
@@ -271,8 +269,8 @@ class Database:
         Input: schema_path -- path to a .sql schema file.
         Output: None.
         Details:
-            Reads the file text. On SQLite, runs it with executescript.
-            On MariaDB, rewrites SQLite syntax and then runs each statement.
+            Reads the file text. SQLite runs it with executescript.
+            MariaDB changes the SQLite syntax and runs each statement.
         """
         try:
             sql = Path(schema_path).read_text(encoding="utf-8")

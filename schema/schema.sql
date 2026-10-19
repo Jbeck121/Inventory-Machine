@@ -1,15 +1,14 @@
 -- Inventory Machine: core schema (MVP)
 --
--- This schema is domain-agnostic. It holds only the tables the base
--- pipeline needs: photo ingestion, AI tagging, embeddings, clustering,
--- and printed QR labels. It does not include any business-specific
--- tables (an item, an employee record, a lab member, and so on). The
--- three files in this directory each add one domain on top of this
--- core set.
+-- This schema does not depend on a domain. It holds only the 11 tables
+-- the base pipeline needs for photo ingestion, AI tagging, embeddings,
+-- clustering, and printed QR labels. It has no business-specific tables
+-- for items, employees, lab members, or other domain records.
+-- Each of the three other files adds one domain to this core set.
 --
--- Target: SQLite for development. The team switches to MariaDB later
--- by changing only the connection string in the data access layer, not
--- this file's table shape. Two syntax notes for that later port:
+-- Target: SQLite for development. The team later switches to MariaDB
+-- by changing only the connection string in the data access layer.
+-- The table shape stays the same. The later port needs two syntax changes:
 --   1. INTEGER PRIMARY KEY AUTOINCREMENT becomes
 --      INTEGER PRIMARY KEY AUTO_INCREMENT.
 --   2. datetime('now') becomes CURRENT_TIMESTAMP.
@@ -28,18 +27,18 @@ CREATE TABLE locations (
     created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- A cluster groups items the embedding step found similar. label comes
--- from a follow-up vision model call over the cluster's most central
--- items. Noise items (HDBSCAN label -1) keep items.cluster_id NULL.
+-- A cluster groups items that the embedding step found similar.
+-- A later vision model call labels the cluster from its most central items.
+-- Noise items (HDBSCAN label -1) keep items.cluster_id NULL.
 CREATE TABLE clusters (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     label       TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- One row per cataloged item. id is a UUID the pipeline generates once,
--- at first processing time, so a QR code can point at a stable value
--- even before the row exists in every downstream table.
+-- Each row holds one cataloged item. The pipeline generates id as a UUID
+-- once, when it first processes the item. A QR code can use this stable
+-- value before the row exists in every downstream table.
 CREATE TABLE items (
     id                 VARCHAR(36) PRIMARY KEY,
     location_id        INTEGER REFERENCES locations(id),
@@ -50,11 +49,11 @@ CREATE TABLE items (
     date_processed      TEXT NOT NULL
 );
 
--- An item can have more than one photo. Each row is one source photo.
--- date_taken/gps_lat/gps_lon are optional: populated from the photo's
--- EXIF data when present, left NULL when the source has none. They
--- record where/when the photo was captured, separate from the
--- locations table, which tracks the physical storage place.
+-- An item can have more than one photo. Each row holds one source photo.
+-- The optional date_taken/gps_lat/gps_lon fields use the photo's EXIF data
+-- when present. They stay NULL when the source has no such data.
+-- These fields show where and when someone captured the photo.
+-- The locations table shows the physical storage place.
 CREATE TABLE images (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id            VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -68,10 +67,10 @@ CREATE TABLE images (
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- A tag is a single AI-generated keyword (for example "wooden",
--- "power tool"). Tags stay separate from the curated category tables a
--- domain schema may add, because a tag comes from the model, not from
--- a person choosing a taxonomy.
+-- A tag is one AI-generated keyword (for example "wooden" or
+-- "power tool"). Tags stay separate from curated category tables that
+-- a domain schema can add. The model generates tags.
+-- A person selects categories from a taxonomy.
 CREATE TABLE tags (
     id    INTEGER PRIMARY KEY AUTOINCREMENT,
     name  VARCHAR(255) NOT NULL UNIQUE
@@ -84,9 +83,9 @@ CREATE TABLE item_tags (
     PRIMARY KEY (item_id, tag_id)
 );
 
--- The two signals that make up an item's confidence score, stored
--- apart from items so the pipeline can re-weight or audit them later
--- without rewriting the items table.
+-- The two signals for an item's confidence score stay separate from items.
+-- The pipeline can change their weights or audit them later without
+-- changing the items table.
 CREATE TABLE confidence_components (
     item_id               VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     self_report           REAL NOT NULL,
@@ -96,9 +95,9 @@ CREATE TABLE confidence_components (
     computed_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- The embedding vector itself lives in ChromaDB, not in SQL. This
--- table stores only the pointer the pipeline needs to fetch a vector
--- back from Chroma: which collection, which record, which model.
+-- The embedding vector lives in ChromaDB, not in SQL. This table stores
+-- only the pointer that the pipeline needs to get the vector from Chroma.
+-- The pointer records the collection, record, and model.
 CREATE TABLE embeddings_index (
     item_id            VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     chroma_collection  TEXT NOT NULL,
@@ -108,9 +107,9 @@ CREATE TABLE embeddings_index (
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Audit trail of every raw vision model call, including failed
--- attempts the pipeline retried. This keeps the raw AI output separate
--- from the validated, normalized fields the pipeline writes to items.
+-- This table records every raw vision model call, including failed
+-- attempts that the pipeline retried. It keeps raw AI output separate
+-- from the checked, normalized fields that the pipeline writes to items.
 CREATE TABLE vision_model_outputs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id         VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -120,11 +119,11 @@ CREATE TABLE vision_model_outputs (
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- A label is a printed sheet: a short text description plus a QR code.
--- Most labels point at a location, because one container holds many
--- items and the label marks the container, not a single item. A label
--- can instead point at a single item when that item has no container
--- of its own. Every row must point at exactly one of the two.
+-- A label is a printed sheet with a short text description and a QR code.
+-- Most labels point to a location because one container holds many items.
+-- The label marks the container, not one item.
+-- A label can point to an item when that item has no container of its own.
+-- Each row must point to exactly one location or one item.
 CREATE TABLE qr_labels (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     location_id    INTEGER REFERENCES locations(id),
@@ -139,8 +138,8 @@ CREATE TABLE qr_labels (
     )
 );
 
--- One row per pipeline run. This lets the team trace which config
--- produced which items, and replay a run's settings later.
+-- Each row holds one pipeline run. The team can trace which config
+-- produced which items and later reuse a run's settings.
 CREATE TABLE processing_runs (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     input_dir        TEXT NOT NULL,

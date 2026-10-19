@@ -1,10 +1,10 @@
 -- Inventory Machine: Option A, home organizer
 --
--- This file is a full, standalone schema. It contains the 11 core
--- tables from schema.sql plus 13 tables for a household inventory:
--- a curated category tree, lending between household members,
--- condition and maintenance history, purchase and warranty records,
--- disposal tracking, value estimates, and insurance coverage.
+-- This full, standalone schema contains the 11 core tables from schema.sql.
+-- It adds 13 tables for household inventory. These include a curated
+-- category tree, loans between household members, condition and
+-- maintenance history, purchases and warranties, disposal records,
+-- value estimates, and insurance coverage.
 --
 -- Target: SQLite for development. See schema.sql's header for the
 -- MariaDB port notes (AUTOINCREMENT, datetime('now')).
@@ -114,9 +114,9 @@ CREATE TABLE processing_runs (
 
 -- ===== Domain tables: home organizer =====
 
--- A curated category tree (for example "Tools > Power Tools"), kept
--- apart from the AI-generated tags table. A person picks a category;
--- the vision model generates a tag.
+-- This curated category tree includes paths such as "Tools > Power Tools".
+-- It stays separate from the AI-generated tags table.
+-- A person selects a category. The vision model generates a tag.
 CREATE TABLE categories (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     name                TEXT NOT NULL,
@@ -135,8 +135,8 @@ CREATE TABLE household_members (
     email  TEXT
 );
 
--- Who currently has an item that left its usual container, and when
--- it is due back.
+-- This log records who has an item that left its usual container
+-- and when the item is due back.
 CREATE TABLE borrow_log (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id              VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -145,7 +145,7 @@ CREATE TABLE borrow_log (
     returned_at          TEXT
 );
 
--- Actions taken on an item: cleaned, repaired, discarded, replaced.
+-- Item actions: cleaned, repaired, discarded, or replaced.
 CREATE TABLE maintenance_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id     VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -154,8 +154,8 @@ CREATE TABLE maintenance_log (
     notes       TEXT
 );
 
--- Observed condition over time, separate from maintenance_log because
--- this tracks a state (worn, broken), not an action taken.
+-- This log records an item's condition over time, such as worn or broken.
+-- maintenance_log records actions, not the item's condition.
 CREATE TABLE condition_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -170,8 +170,8 @@ CREATE TABLE retailers (
     website  TEXT
 );
 
--- Acquisition record: where an item came from, what it cost, and its
--- warranty window.
+-- This record shows where an item came from, what it cost,
+-- and its warranty window.
 CREATE TABLE purchase_records (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id               VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -182,8 +182,8 @@ CREATE TABLE purchase_records (
     warranty_expiration   TEXT
 );
 
--- An item's value changes over time, so this is a series of
--- snapshots, not one fixed field on items.
+-- An item's value changes over time. This table holds a series
+-- of snapshots instead of one fixed field on items.
 CREATE TABLE item_value_estimates (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id          VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -193,8 +193,9 @@ CREATE TABLE item_value_estimates (
     source           TEXT NOT NULL CHECK (source IN ('purchase_price', 'appraisal', 'market_comparison'))
 );
 
--- How an item permanently left the household: sold, donated, thrown
--- out, or recycled. Distinct from borrow_log, which is temporary.
+-- This record shows how an item permanently left the household:
+-- sold, donated, thrown out, or recycled.
+-- borrow_log records temporary loans.
 CREATE TABLE disposal_records (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -218,9 +219,9 @@ CREATE TABLE item_insurance (
     PRIMARY KEY (item_id, policy_id)
 );
 
--- A scheduled follow-up: a warranty about to expire, maintenance due,
--- a borrowed item overdue. due_at drives a simple reminder view across
--- otherwise unrelated tables.
+-- This table holds reminders for warranties near expiration,
+-- maintenance due, and overdue loans. due_at sets the time.
+-- This supports a simple reminder view across these tables.
 CREATE TABLE reminders (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id        VARCHAR(36) REFERENCES items(id),

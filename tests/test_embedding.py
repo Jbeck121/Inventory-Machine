@@ -1,4 +1,4 @@
-"""Unit tests for inventory_machine.embedding.client. Ollama is mocked."""
+"""Tests for inventory_machine.embedding.client. The tests mock Ollama."""
 import configparser
 from unittest.mock import MagicMock, patch
 

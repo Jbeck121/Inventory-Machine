@@ -1,10 +1,9 @@
 -- Inventory Machine: Option B, university IT asset management
 --
--- This file is a full, standalone schema. It contains the 11 core
--- tables from schema.sql plus 17 tables for a university IT
--- department: the group that issues laptops, runs computer labs and
--- classroom AV gear, and fields support tickets from faculty, staff,
--- and students across campus.
+-- This full, standalone schema contains the 11 core tables from schema.sql.
+-- It adds 17 tables for a university IT department. The department
+-- issues laptops, runs computer labs and classroom AV gear, and
+-- handles support tickets from faculty, staff, and students across campus.
 --
 -- Target: SQLite for development. See schema.sql's header for the
 -- MariaDB port notes (AUTOINCREMENT, datetime('now')).
@@ -28,9 +27,9 @@ CREATE TABLE clusters (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Catalog of make and model, kept apart from a serialized unit. Ten
--- identical lab workstations share one asset_models row and get ten
--- separate items rows, one per serial-tagged machine.
+-- This catalog records make and model separately from each serialized unit.
+-- Ten identical lab workstations share one asset_models row.
+-- Each machine gets its own items row and serial tag.
 CREATE TABLE asset_models (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     manufacturer  TEXT NOT NULL,
@@ -42,8 +41,8 @@ CREATE TABLE asset_models (
     specs_json    TEXT
 );
 
--- One row per cataloged, serial-tagged asset. asset_model_id links the
--- specific unit back to its catalog entry.
+-- Each row holds one cataloged asset with a serial tag.
+-- asset_model_id links the unit to its catalog entry.
 CREATE TABLE items (
     id                VARCHAR(36) PRIMARY KEY,
     location_id       INTEGER REFERENCES locations(id),
@@ -131,16 +130,16 @@ CREATE TABLE processing_runs (
 
 -- ===== Domain tables: university IT =====
 
--- Academic and administrative units on campus (for example "Computer
--- Science", "Registrar", "Housing"). employees and cost_centers both
+-- Campus academic and administrative units include "Computer Science",
+-- "Registrar", and "Housing". Both employees and cost_centers
 -- belong to a department.
 CREATE TABLE departments (
     id    INTEGER PRIMARY KEY AUTOINCREMENT,
     name  VARCHAR(255) NOT NULL UNIQUE
 );
 
--- IT staff: technicians, administrators, help desk agents. Distinct
--- from patrons, who request support but do not manage assets.
+-- IT staff include technicians, administrators, and help desk agents.
+-- Patrons request support but do not manage assets.
 CREATE TABLE employees (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     name           TEXT NOT NULL,
@@ -149,9 +148,9 @@ CREATE TABLE employees (
     job_title      TEXT
 );
 
--- Faculty, staff, and students who request IT support or receive a
--- checked-out asset. patron_type distinguishes a student, who is not
--- a university employee, from faculty or staff, who may be.
+-- Faculty, staff, and students request IT support or receive loaned assets.
+-- patron_type identifies students separately from faculty and staff.
+-- Students are not university employees. Faculty and staff can be employees.
 CREATE TABLE patrons (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT NOT NULL,
@@ -160,9 +159,9 @@ CREATE TABLE patrons (
     patron_type  TEXT NOT NULL CHECK (patron_type IN ('student', 'faculty', 'staff'))
 );
 
--- A university funding source: state appropriation, grant, or
--- auxiliary account. Purchase orders and software licenses charge
--- against one, so a department can report its own IT spend.
+-- A university funding source can be a state appropriation, a grant,
+-- or an auxiliary account. Purchase orders and software licenses
+-- charge against one, so a department can report its own IT spend.
 CREATE TABLE cost_centers (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     code           VARCHAR(255) NOT NULL UNIQUE,
@@ -188,8 +187,8 @@ CREATE TABLE purchase_orders (
 );
 
 -- A purchase order lists a catalog model and a quantity, not a
--- specific serialized unit. The unit gets its own items row once it
--- arrives and the pipeline tags it.
+-- specific serialized unit. The unit gets an items row after it arrives
+-- and the pipeline tags it.
 CREATE TABLE purchase_order_lines (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     purchase_order_id INTEGER NOT NULL REFERENCES purchase_orders(id),
@@ -216,8 +215,8 @@ CREATE TABLE software_licenses (
     expires_at      TEXT
 );
 
--- Which machine has which license installed. A seat can move from one
--- item to another over time, so this is a log, not a fixed pairing.
+-- This log shows which machine has a license installed.
+-- A seat can move between items over time, so this is not a fixed pair.
 CREATE TABLE license_assignments (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     license_id   INTEGER NOT NULL REFERENCES software_licenses(id),
@@ -226,8 +225,7 @@ CREATE TABLE license_assignments (
     revoked_at   TEXT
 );
 
--- Which patron currently holds a checked-out asset, such as a loaner
--- laptop.
+-- This table records which patron has a loaned asset, such as a laptop.
 CREATE TABLE asset_assignments (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id      VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -241,8 +239,8 @@ CREATE TABLE ticket_categories (
     name  VARCHAR(255) NOT NULL UNIQUE
 );
 
--- item_id is nullable because a ticket is not always about one
--- tracked asset (for example, an account access request).
+-- item_id can be NULL because some tickets concern account access
+-- instead of a tracked asset.
 CREATE TABLE service_tickets (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id              VARCHAR(36) REFERENCES items(id),

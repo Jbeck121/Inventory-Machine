@@ -1,4 +1,4 @@
-"""Integration tests for the Option A photo pipeline with external services faked."""
+"""Tests the Option A photo pipeline with fake external services."""
 import configparser
 import json
 import logging

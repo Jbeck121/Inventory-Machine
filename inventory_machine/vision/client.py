@@ -3,8 +3,8 @@ Author: LlmConnection
 Date:   2026
 
 Description:
-    Calls the configured vision model through Ollama. Returns parsed
-    output and raw attempts for storage after the item row exists.
+    Calls the configured vision model through Ollama.
+    Returns parsed output and raw attempts for storage after the item row exists.
 """
 # Imports
 import json
@@ -21,7 +21,7 @@ REQUIRED_VISION_KEYS = ("tags", "description", "confidence")
 
 
 class VisionModelError(Exception):
-    """A failed vision call with the attempts made before it failed."""
+    """A vision call error with its earlier attempts."""
 
     def __init__(self, message: str, attempts: list[tuple[str, int, str]]):
         super().__init__(message)
@@ -34,8 +34,8 @@ def _parse_vision_json(raw_response: str) -> dict:
     Input: raw_response -- text body from the vision model.
     Output: dict with tags, description, and confidence.
     Details:
-        Raises ValueError when the text is not JSON, is not an object,
-        or is missing a required key.
+        Raises ValueError if the text is not JSON, is not an object,
+        or lacks a required key.
     """
     data = json.loads(raw_response)
     if not isinstance(data, dict):
@@ -43,7 +43,7 @@ def _parse_vision_json(raw_response: str) -> dict:
     missing = [key for key in REQUIRED_VISION_KEYS if key not in data]
     if missing:
         raise ValueError(
-            "Vision model JSON is missing required key(s): " + ", ".join(missing)
+            "Vision model JSON lacks required key(s): " + ", ".join(missing)
         )
     tags = data["tags"]
     if not isinstance(tags, list):
@@ -69,8 +69,8 @@ async def _chat_once(client: AsyncClient, model: str, messages: list[dict]) -> t
         messages -- chat messages, including the image.
     Output: (raw text, error or None).
     Details:
-        Calls chat with format=json. On a call error, logs the error
-        and returns the error text so the caller can store the attempt.
+        Calls chat with format=json. If the call fails, this method logs
+        the error and returns its text for the caller to store.
     """
     try:
         response = await client.chat(model=model, messages=messages, format="json")
@@ -96,8 +96,8 @@ async def store_vision_attempt(
         attempt index. raw_response -- raw model text for this attempt.
     Output: None.
     Details:
-        Inserts one audit row into vision_model_outputs. Does not store
-        the parsed tags. Raises after a log when the insert fails.
+        Inserts one audit row into vision_model_outputs.
+        Does not store parsed tags. Logs and raises on an insert error.
     """
     try:
         db.execute(
@@ -120,8 +120,8 @@ async def call_vision_model(
     Output: parsed vision data and (model, attempt number, raw text) rows.
     Details:
         Retries bad JSON on the primary model, then tries the fallback.
-        On total failure, raises VisionModelError with all raw attempts.
-        The caller stores attempts after it inserts the item.
+        Raises VisionModelError with all raw attempts if both models fail.
+        The caller stores the attempts after it inserts the item.
     """
     prompt_path = cfg.get("vision", "prompt_template")
     try:
@@ -156,7 +156,7 @@ async def call_vision_model(
             if call_error is not None:
                 if model == primary and not fallback_used:
                     logger.warning(
-                        "Primary vision model failed. Trying fallback model %s",
+                        "Primary vision model failed. The client tries fallback model %s",
                         fallback,
                     )
                     model = fallback
@@ -170,23 +170,23 @@ async def call_vision_model(
             except (json.JSONDecodeError, ValueError) as exc:
                 if model == primary and attempt_number < max_retries:
                     logger.warning(
-                        "Vision model JSON is not valid on attempt %s. Retrying.",
+                        "Vision model JSON is invalid on attempt %s. The client retries.",
                         attempt_number,
                     )
                     continue
                 if model == primary and not fallback_used:
                     logger.warning(
-                        "Primary vision model exceeded retries. Trying fallback model %s",
+                        "Primary vision model exceeded retries. The client tries fallback model %s",
                         fallback,
                     )
                     model = fallback
                     fallback_used = True
                     continue
                 logger.exception(
-                    "Vision model output is not valid JSON or is missing a required key"
+                    "Vision model output lacks valid JSON or a required key"
                 )
                 raise VisionModelError(
-                    "Vision model output is not valid JSON or is missing a required key: "
+                    "Vision model output lacks valid JSON or a required key: "
                     + str(exc), attempts
                 ) from exc
     finally:

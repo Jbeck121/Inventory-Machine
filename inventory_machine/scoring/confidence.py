@@ -24,8 +24,8 @@ def tag_coherence(tag_vectors: list[list[float]]) -> float:
     Input: tag_vectors -- embedding vectors for one item's distinct tags.
     Output: mean pairwise cosine similarity, clamped to [0, 1].
     Details:
-        Empty tags score zero. A single tag scores one. A zero-length
-        vector has zero similarity with each other vector.
+        Empty tags score zero. One tag scores one.
+        A zero-length vector has zero similarity with all other vectors.
     """
     count = len(tag_vectors)
     if count == 0:
@@ -50,7 +50,7 @@ def compute_confidence(self_report: float, coherence: float, cfg: ConfigParser) 
         cfg -- loaded configuration.
     Output: weighted confidence score.
     Details:
-        Clamps the model self-report before applying configured weights.
+        Clamps the model self-report before it applies the configured weights.
     """
     self_weight, coherence_weight = get_confidence_weights(cfg)
     return self_weight * max(0.0, min(1.0, self_report)) + coherence_weight * coherence
@@ -64,8 +64,8 @@ def score_item(
         cfg -- loaded configuration. embed -- batch embedding function.
     Output: confidence signals, weights, score, and threshold flag.
     Details:
-        Embeds distinct tags once in their original order. Skips the
-        model call for an empty tag list.
+        Embeds distinct tags once in their original order.
+        Does not call the model if the tag list is empty.
     """
     distinct_tags = []
     seen = set()
