@@ -27,10 +27,11 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> configparser.ConfigParser:
     Details:
         Raises FileNotFoundError if the file does not exist.
         Checks the confidence weights at startup so an invalid config
-        fails before the pipeline starts.
+        fails before the pipeline starts. Interpolation is off because
+        timestamp_format holds strftime codes such as %Y.
     """
     cfg = configparser.ConfigParser(
-        interpolation=configparser.BasicInterpolation(),
+        interpolation=None,
         inline_comment_prefixes=(";",),
     )
     read_paths = cfg.read(path)

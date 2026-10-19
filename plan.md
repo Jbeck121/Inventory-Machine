@@ -446,7 +446,7 @@ from pathlib import Path
 
 def load_config(path: str = "config.ini") -> configparser.ConfigParser:
     cfg = configparser.ConfigParser(
-        interpolation=configparser.BasicInterpolation(),
+        interpolation=None,
         inline_comment_prefixes=(";",),
     )
     read = cfg.read(path)
