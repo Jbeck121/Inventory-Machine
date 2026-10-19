@@ -3,9 +3,8 @@ Author: LlmConnection
 Date:   2026
 
 Description:
-    Calls the configured vision model through Ollama. Parses JSON
-    tags, description, and confidence. Writes each raw attempt to
-    vision_model_outputs.
+    Calls the configured vision model through Ollama. Returns parsed
+    output and raw attempts for storage after the item row exists.
 """
 # Imports
 import json
@@ -19,6 +18,14 @@ from ollama import AsyncClient
 logger = logging.getLogger(__name__)
 
 REQUIRED_VISION_KEYS = ("tags", "description", "confidence")
+
+
+class VisionModelError(Exception):
+    """A failed vision call with the attempts made before it failed."""
+
+    def __init__(self, message: str, attempts: list[tuple[str, int, str]]):
+        super().__init__(message)
+        self.attempts = attempts
 
 
 # Functions
@@ -107,18 +114,14 @@ async def store_vision_attempt(
 async def call_vision_model(
     image_path: str,
     cfg: ConfigParser,
-    db,
-    item_id: str,
-) -> dict:
+) -> tuple[dict, list[tuple[str, int, str]]]:
     """
     Input: image_path -- path to the photo. cfg -- loaded ConfigParser.
-        db -- Database from the data access layer. item_id -- item UUID.
-    Output: dict with tags, description, and confidence.
+    Output: parsed vision data and (model, attempt number, raw text) rows.
     Details:
-        Calls the primary vision model with format=json. Retries on bad
-        JSON up to max_retries. Then tries the fallback model once. A
-        primary call error also switches to the fallback model once.
-        Stores every raw attempt before parse.
+        Retries bad JSON on the primary model, then tries the fallback.
+        On total failure, raises VisionModelError with all raw attempts.
+        The caller stores attempts after it inserts the item.
     """
     prompt_path = cfg.get("vision", "prompt_template")
     try:
@@ -143,13 +146,12 @@ async def call_vision_model(
     model = primary
     fallback_used = False
     attempt_number = 0
+    attempts: list[tuple[str, int, str]] = []
     try:
         while True:
             attempt_number += 1
             raw_response, call_error = await _chat_once(client, model, messages)
-            await store_vision_attempt(
-                db, item_id, model, attempt_number, raw_response
-            )
+            attempts.append((model, attempt_number, raw_response))
 
             if call_error is not None:
                 if model == primary and not fallback_used:
@@ -160,10 +162,11 @@ async def call_vision_model(
                     model = fallback
                     fallback_used = True
                     continue
-                raise call_error
+                logger.warning("Vision model failed after %s attempts", len(attempts))
+                raise VisionModelError(str(call_error), attempts) from call_error
 
             try:
-                return _parse_vision_json(raw_response)
+                return _parse_vision_json(raw_response), attempts
             except (json.JSONDecodeError, ValueError) as exc:
                 if model == primary and attempt_number < max_retries:
                     logger.warning(
@@ -182,9 +185,9 @@ async def call_vision_model(
                 logger.exception(
                     "Vision model output is not valid JSON or is missing a required key"
                 )
-                raise ValueError(
+                raise VisionModelError(
                     "Vision model output is not valid JSON or is missing a required key: "
-                    + str(exc)
+                    + str(exc), attempts
                 ) from exc
     finally:
         try:
