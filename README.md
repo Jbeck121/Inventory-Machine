@@ -14,22 +14,27 @@ Baldwin, Kian Dong, and Reece Clem.
 ## Status
 
 The project has a working package under `inventory_machine/` and a test
-suite of 12 passing tests. The remaining pipeline steps (preprocess,
-score, cluster, label, write) are still in progress.
+suite of 40 passing tests (1 MariaDB test skips unless `IM_MARIADB_DSN`
+is set). `pipeline.py` wires all 9 steps. Three teammate functions
+have not landed yet, and the pipeline raises `RuntimeError` naming each
+one until it does: `preprocessing.prepare_image` (resize),
+`preprocessing.resolve_location_id` (location rows), and
+`labels.write_qr_labels` (QR label rows).
 
 - `inventory_machine/` holds the package code: `config.py` (config
   loader and validation), `db.py` (data access layer for SQLite and
-  MariaDB), `pipeline.py` (logging setup and entry point),
-  `vision/client.py` (Ollama vision client), and `embedding/client.py`
-  (Ollama embedding client with ChromaDB storage).
+  MariaDB), `pipeline.py` (step wiring and `processing_runs`),
+  `preprocessing/` (folder walk and EXIF), `vision/client.py` (Ollama
+  vision client), `embedding/client.py` (Ollama embedding client with
+  ChromaDB storage), `scoring/` (confidence score), `clustering/`
+  (HDBSCAN and cluster labels), and `labels/` (QR images).
 - `pyproject.toml` makes the package installable with
   `pip install -e ".[dev]"`.
 - `config.ini.example` shows every config section the code reads. Copy
   it to `config.ini` to run locally.
 - `prompts/vision_prompt.txt` is the prompt template the vision client
   sends with each photo.
-- `tests/` holds `test_db.py`, `test_vision.py`, and
-  `test_embedding.py`. Run them with `pytest tests/`.
+- `tests/` holds the pytest suite. Run it with `pytest tests/`.
 - `plan.md` holds the full technical plan: architecture, AI models, the
   database design, the QR label strategy, the config file, the
   processing pipeline, and the presentation plan.

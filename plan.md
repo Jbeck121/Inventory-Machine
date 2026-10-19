@@ -246,12 +246,19 @@ connection string in the config file. No other code changes, because no
 code outside the data access layer issues SQL directly, and the table
 and column shapes stay the same on both backends.
 
-Two syntax differences carry across the switch, and the data access
+Three syntax differences carry across the switch, and the data access
 layer, not the schema files, handles them:
 
 1. `INTEGER PRIMARY KEY AUTOINCREMENT` (SQLite) becomes `INTEGER PRIMARY
    KEY AUTO_INCREMENT` (MariaDB).
 2. `datetime('now')` (SQLite) becomes `CURRENT_TIMESTAMP` (MariaDB).
+3. `?` bind markers (SQLite) become `%s` (PyMySQL).
+
+The schema files themselves stay portable. MariaDB cannot index a
+`TEXT` column without a prefix length, so UUID keys use `VARCHAR(36)`
+and unique names use `VARCHAR(255)`; SQLite accepts both. No column
+uses a MariaDB reserved word as its name (Option A's condition column
+is `condition_rating`). All four schema files load on MariaDB 11.
 
 ### Core Tables (all options)
 
