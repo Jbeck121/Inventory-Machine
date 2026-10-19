@@ -43,6 +43,29 @@ def embed_text(text: str, cfg: ConfigParser) -> list[float]:
             logger.warning("Failed to close Ollama embedding client")
 
 
+def embed_texts(texts: list[str], cfg: ConfigParser) -> list[list[float]]:
+    """
+    Input: texts -- strings to embed in one batch. cfg -- loaded ConfigParser.
+    Output: one embedding vector per input string, in input order.
+    Details:
+        Calls the configured Ollama embedding model once for the batch.
+    """
+    model = cfg.get("models", "embedding_model")
+    host = cfg.get("models", "ollama_base_url")
+    client = Client(host=host)
+    try:
+        response = client.embed(model=model, input=texts)
+        return [list(vector) for vector in response.embeddings]
+    except Exception:
+        logger.exception("Batch embedding model call failed")
+        raise
+    finally:
+        try:
+            client.close()
+        except Exception:
+            logger.warning("Failed to close Ollama embedding client")
+
+
 def get_chroma_collection(cfg: ConfigParser):
     """
     Input: cfg -- loaded ConfigParser.
