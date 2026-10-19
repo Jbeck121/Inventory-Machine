@@ -41,7 +41,7 @@ CREATE TABLE clusters (
 -- at first processing time, so a QR code can point at a stable value
 -- even before the row exists in every downstream table.
 CREATE TABLE items (
-    id                 TEXT PRIMARY KEY,
+    id                 VARCHAR(36) PRIMARY KEY,
     location_id        INTEGER REFERENCES locations(id),
     cluster_id          INTEGER REFERENCES clusters(id),
     description         TEXT NOT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE items (
 -- locations table, which tracks the physical storage place.
 CREATE TABLE images (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id            TEXT NOT NULL REFERENCES items(id),
+    item_id            VARCHAR(36) NOT NULL REFERENCES items(id),
     file_path          TEXT NOT NULL,
     original_filename  TEXT NOT NULL,
     width_px           INTEGER,
@@ -74,12 +74,12 @@ CREATE TABLE images (
 -- a person choosing a taxonomy.
 CREATE TABLE tags (
     id    INTEGER PRIMARY KEY AUTOINCREMENT,
-    name  TEXT NOT NULL UNIQUE
+    name  VARCHAR(255) NOT NULL UNIQUE
 );
 
 -- Many-to-many bridge between items and tags.
 CREATE TABLE item_tags (
-    item_id  TEXT NOT NULL REFERENCES items(id),
+    item_id  VARCHAR(36) NOT NULL REFERENCES items(id),
     tag_id   INTEGER NOT NULL REFERENCES tags(id),
     PRIMARY KEY (item_id, tag_id)
 );
@@ -88,7 +88,7 @@ CREATE TABLE item_tags (
 -- apart from items so the pipeline can re-weight or audit them later
 -- without rewriting the items table.
 CREATE TABLE confidence_components (
-    item_id               TEXT PRIMARY KEY REFERENCES items(id),
+    item_id               VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     self_report           REAL NOT NULL,
     tag_coherence         REAL NOT NULL,
     self_report_weight    REAL NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE confidence_components (
 -- table stores only the pointer the pipeline needs to fetch a vector
 -- back from Chroma: which collection, which record, which model.
 CREATE TABLE embeddings_index (
-    item_id            TEXT PRIMARY KEY REFERENCES items(id),
+    item_id            VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     chroma_collection  TEXT NOT NULL,
     chroma_record_id   TEXT NOT NULL,
     model_name         TEXT NOT NULL,
@@ -113,7 +113,7 @@ CREATE TABLE embeddings_index (
 -- from the validated, normalized fields the pipeline writes to items.
 CREATE TABLE vision_model_outputs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id         TEXT NOT NULL REFERENCES items(id),
+    item_id         VARCHAR(36) NOT NULL REFERENCES items(id),
     model_name      TEXT NOT NULL,
     attempt_number  INTEGER NOT NULL,
     raw_response    TEXT NOT NULL,
@@ -128,7 +128,7 @@ CREATE TABLE vision_model_outputs (
 CREATE TABLE qr_labels (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     location_id    INTEGER REFERENCES locations(id),
-    item_id        TEXT REFERENCES items(id),
+    item_id        VARCHAR(36) REFERENCES items(id),
     label_text     TEXT NOT NULL,
     qr_url         TEXT NOT NULL,
     qr_image_path  TEXT NOT NULL,
