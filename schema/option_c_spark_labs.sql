@@ -1,11 +1,11 @@
 -- Inventory Machine: Option C, FSU Spark Labs
 --
--- This file is a full, standalone schema. It contains the 11 core
--- tables from schema.sql plus 19 tables for a university research and
--- makerspace lab. Spark Labs' actual equipment mix drove this design:
--- 3D printers and print supplies, servers, an arcade cabinet,
--- soldering and other hand-tool hardware, drones, radio systems, and
--- an active photolithography research effort.
+-- This full, standalone schema contains the 11 core tables from schema.sql.
+-- It adds 19 tables for a university research and makerspace lab.
+-- Spark Labs' equipment mix shaped this design: 3D printers and print
+-- supplies, servers, an arcade cabinet, soldering and other hand-tool
+-- hardware, drones, and radio systems. The lab also has an active
+-- photolithography research effort.
 --
 -- Target: SQLite for development. See schema.sql's header for the
 -- MariaDB port notes (AUTOINCREMENT, datetime('now')).
@@ -29,10 +29,10 @@ CREATE TABLE clusters (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Catalog of equipment kinds the lab owns (for example "3D Printer",
--- "Server", "Arcade Cabinet", "Soldering Station", "Drone", "Radio
--- Transceiver", "Photolithography Mask Aligner"). Individual items
--- link back to one equipment_type.
+-- The lab owns equipment types such as "3D Printer", "Server",
+-- "Arcade Cabinet", "Soldering Station", "Drone", "Radio
+-- Transceiver", and "Photolithography Mask Aligner".
+-- Each item links to one equipment_type.
 CREATE TABLE equipment_types (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         VARCHAR(255) NOT NULL UNIQUE,
@@ -134,9 +134,9 @@ CREATE TABLE lab_members (
     role    TEXT NOT NULL CHECK (role IN ('student', 'staff', 'faculty'))
 );
 
--- A safety or skill certification, often tied to one equipment type
--- (for example "Laser Cutter Safety", "Solder Fume Safety", "FAA Part
--- 107 Small UAS", "RF Safety and FCC Rules").
+-- A safety or skill certificate often relates to one equipment type.
+-- Examples include "Laser Cutter Safety", "Solder Fume Safety",
+-- "FAA Part 107 Small UAS", and "RF Safety and FCC Rules".
 CREATE TABLE certifications (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     name               TEXT NOT NULL,
@@ -160,8 +160,8 @@ CREATE TABLE training_attendance (
     passed                INTEGER NOT NULL DEFAULT 0 CHECK (passed IN (0, 1))
 );
 
--- A member's earned certification, traced back to the session that
--- granted it.
+-- This table records a member's earned certificate and links
+-- it to the session that granted it.
 CREATE TABLE member_certifications (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,
     lab_member_id          INTEGER NOT NULL REFERENCES lab_members(id),
@@ -188,8 +188,8 @@ CREATE TABLE project_members (
     PRIMARY KEY (project_id, lab_member_id)
 );
 
--- A booking ahead of use, for equipment in high demand (the laser
--- cutter, the mask aligner).
+-- This table records reservations before use of equipment
+-- in high demand, such as the laser cutter and the mask aligner.
 CREATE TABLE reservations (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id        VARCHAR(36) NOT NULL REFERENCES items(id),
@@ -199,8 +199,9 @@ CREATE TABLE reservations (
     status         TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'approved', 'denied', 'completed'))
 );
 
--- The actual physical checkout. reservation_id is nullable because a
--- member can walk up and check out equipment with no prior booking.
+-- This table records the actual physical checkout.
+-- reservation_id can be NULL when a member uses equipment
+-- without a prior reservation.
 CREATE TABLE checkouts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     reservation_id  INTEGER REFERENCES reservations(id),
@@ -211,9 +212,9 @@ CREATE TABLE checkouts (
     returned_at     TEXT
 );
 
--- Consumables (filament, resin, solder, PCB stock, mask blanks) are
--- tracked by quantity on hand, not as one-off tagged items the way
--- durable equipment is.
+-- This table tracks consumables (filament, resin, solder, PCB stock,
+-- and mask blanks) by quantity on hand.
+-- It does not track them as individually tagged durable equipment.
 CREATE TABLE consumables (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     name               TEXT NOT NULL,
@@ -248,10 +249,10 @@ CREATE TABLE maintenance_requests (
     notes          TEXT
 );
 
--- A safety incident: a burn from a soldering iron, a drone crash, a
--- lab chemical exposure during photolithography. Distinct from
--- maintenance_requests, which covers equipment condition, not injury
--- or hazard events.
+-- This table records safety incidents: a soldering iron burn,
+-- a drone crash, or a lab chemical exposure during photolithography.
+-- maintenance_requests covers equipment condition.
+-- It does not cover injuries or hazards.
 CREATE TABLE incident_reports (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id       VARCHAR(36) REFERENCES items(id),
@@ -263,9 +264,9 @@ CREATE TABLE incident_reports (
     resolved_at   TEXT
 );
 
--- One research process run on a piece of equipment (a photolithography
--- exposure, a spin-coat cycle, a print job with logged parameters).
--- Ties equipment use back to the project it supports.
+-- Each row records one research process run on equipment: a
+-- photolithography exposure, a spin-coat cycle, or a print job
+-- with logged parameters. It links equipment use to its project.
 CREATE TABLE experiment_runs (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id       INTEGER NOT NULL REFERENCES projects(id),
@@ -276,9 +277,8 @@ CREATE TABLE experiment_runs (
     outcome_notes    TEXT
 );
 
--- Extension table for the subset of items that are servers. This is a
--- supertype/subtype split: every server is an item, but only servers
--- carry network fields.
+-- This extension table holds the subset of items that are servers.
+-- Every server is an item. Only servers have these network fields.
 CREATE TABLE server_assets (
     item_id           VARCHAR(36) PRIMARY KEY REFERENCES items(id),
     hostname          VARCHAR(255) NOT NULL UNIQUE,
@@ -300,8 +300,8 @@ CREATE TABLE drone_flight_logs (
     notes                    TEXT
 );
 
--- FCC amateur radio licenses are held by a person, not by a piece of
--- equipment, so this ties to lab_members rather than to items.
+-- A person holds an FCC amateur radio license, not a piece of equipment.
+-- This table links to lab_members instead of items.
 CREATE TABLE radio_licenses (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     lab_member_id  INTEGER NOT NULL REFERENCES lab_members(id),

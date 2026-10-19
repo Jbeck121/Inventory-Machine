@@ -29,8 +29,9 @@ def _cluster_vectors(
     Input: vectors -- item UUIDs and embeddings. cfg -- clustering settings.
     Output: item assignments and up to three central UUIDs per cluster.
     Details:
-        Normalize before Euclidean HDBSCAN. Rank members by membership
-        probability, then squared distance to the normalized centroid.
+        Uses Euclidean HDBSCAN after it normalizes vectors.
+        Ranks members by membership probability, then by squared
+        distance to the normalized centroid.
     """
     item_ids = list(vectors)
     min_cluster_size = cfg.getint("clustering", "min_cluster_size")
@@ -74,7 +75,7 @@ def run_clustering(vectors: dict[str, list[float]], cfg: ConfigParser) -> dict[s
     """
     Input: vectors -- item UUIDs and embeddings. cfg -- clustering settings.
     Output: cluster index per item, or None for noise.
-    Details: Use normalized Euclidean distance to group the vectors.
+    Details: Groups normalized vectors by Euclidean distance.
     """
     assignments, _ = _cluster_vectors(vectors, cfg)
     return assignments
@@ -84,7 +85,7 @@ def write_clusters(db, assignments: dict[str, int | None]) -> dict[int, int]:
     """
     Input: db -- Database. assignments -- item UUIDs and cluster indexes.
     Output: mapping from cluster index to the new clusters.id.
-    Details: Remove the previous assignments and rows before writing new ones.
+    Details: Removes earlier assignments and rows before it writes new ones.
     """
     db.execute("UPDATE items SET cluster_id = NULL")
     db.execute("DELETE FROM clusters")
@@ -113,8 +114,8 @@ def label_clusters(
         representative item UUIDs per cluster. cluster_ids -- SQL row IDs.
         chat -- optional Ollama chat callable for tests.
     Output: cluster index to label or None when all model attempts fail.
-    Details: Retry malformed labels on the primary model. Try the fallback
-        once, and leave the SQL label NULL if it also fails.
+    Details: Retries malformed labels on the primary model.
+        Tries the fallback once and leaves the SQL label NULL if it fails.
     """
     if not central_items:
         return {}
@@ -175,7 +176,7 @@ def cluster_items(db, cfg: ConfigParser) -> dict:
     """
     Input: db -- Database. cfg -- Chroma, clustering, and model settings.
     Output: summary with cluster count, noise count, and labels.
-    Details: Read all Chroma vectors, replace clusters, and label each group.
+    Details: Reads Chroma vectors, replaces clusters, and labels each group.
     """
     collection = get_chroma_collection(cfg)
     records = collection.get(include=["embeddings"])

@@ -37,9 +37,9 @@ def configure_logging(log_file: str) -> None:
     Input: log_file -- path the RotatingFileHandler writes to.
     Output: None.
     Details:
-        Attaches one RotatingFileHandler to the root logger, so every
-        module's `logging.getLogger(__name__)` call writes to the
-        same file. 5 MB per file, 3 backups kept.
+        Adds one RotatingFileHandler to the root logger.
+        Every module's `logging.getLogger(__name__)` call writes to
+        the same file. Each file holds 5 MB, with 3 backups.
     """
     Path(log_file).parent.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=3)
@@ -57,8 +57,8 @@ def _teammate_function(module_name: str, function_name: str, step: int, owner: s
         step -- pipeline step number. owner -- teammate and task ID.
     Output: the function object.
     Details:
-        Raises RuntimeError that names the missing function and its
-        owner when a teammate's function has not landed yet.
+        Raises RuntimeError with the missing function and its owner
+        if a teammate's function is not available yet.
     """
     module = importlib.import_module(module_name)
     try:
@@ -75,8 +75,8 @@ def run_pipeline(cfg, db) -> dict:
     Input: cfg -- loaded config. db -- open Database with Option A schema.
     Output: processed, failed, cluster_count, label_count, and run_id.
     Details:
-        Insert the run before reading photos. Store each item before its
-        dependent rows. Skip only photos whose vision call fails entirely.
+        Inserts the run before it reads photos. Stores each item
+        before its dependent rows. Skips photos only if vision fails entirely.
     """
     snapshot = json.dumps({
         section: dict(cfg.items(section)) for section in cfg.sections()
@@ -170,8 +170,8 @@ def main() -> None:
     Input: None.
     Output: None.
     Details:
-        Load config and the Option A schema if needed. Run the pipeline
-        against the selected database and print its summary.
+        Loads the config and the Option A schema if needed.
+        Runs the pipeline against the selected database and prints its summary.
     """
     cfg = load_config()
     configure_logging(cfg.get("paths", "log_file"))
