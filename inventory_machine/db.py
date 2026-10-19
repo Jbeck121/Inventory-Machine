@@ -249,6 +249,23 @@ class Database:
             logger.exception("SQL fetch_all failed")
             raise
 
+    def table_exists(self, table_name: str) -> bool:
+        """
+        Input: table_name -- name of a table.
+        Output: True when the table exists in the open database.
+        Details:
+            Reads sqlite_master on SQLite and information_schema on
+            MariaDB, so callers stay free of backend-specific SQL.
+        """
+        if self._backend == SQLITE_BACKEND:
+            query = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
+        else:
+            query = (
+                "SELECT TABLE_NAME FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
+            )
+        return self.fetch_one(query, (table_name,)) is not None
+
     def load_schema(self, schema_path: str) -> None:
         """
         Input: schema_path -- path to a .sql schema file.
