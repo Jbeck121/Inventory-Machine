@@ -37,6 +37,10 @@ Each option adds its extra tables to the same 11-table core schema (see
 "Database Design" below). The core schema does not change across
 options. Only the business-specific tables change.
 
+**Decision (2026-10-19): Option A.** Its 24 tables sit inside the
+required 15 to 30 range. If review cuts Option A below 15 tables, the
+team switches to Option B or C.
+
 ---
 
 ## Core Architecture
@@ -536,11 +540,7 @@ value of a relational backend over a flat spreadsheet.
 
 | Decision | Options | Tradeoff |
 |---|---|---|
-| Inventory domain (final scope) | Option A, B, or C above | Each schema is already sized and reviewed. The final pick depends on which domain the team can source real sample photos and data for |
 | MariaDB driver | `mariadb` connector vs. `PyMySQL` | The `mariadb` connector is native and faster. `PyMySQL` is pure Python and needs no system library |
 | Label print method | Adhesive label printer vs. plain paper cut to size | A label printer applies faster. Paper needs tape or a plastic sleeve for durability |
 | Multi-object images | One row per photo vs. one row per detected object | Per-object needs a detection step first. Per-photo stays simpler for the MVP |
 | Report export | Keep an optional CSV/XLSX export of query results vs. skip it | An export gives a quick offline view. The SQL queries already cover the demo requirement on their own |
-
-The domain choice is the most consequential decision left. Everything
-else in this plan works the same way under any of the three options.

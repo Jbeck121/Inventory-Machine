@@ -67,7 +67,8 @@ candidate:
 | `schema/option_b_university_it.sql` | University IT asset management: laptops, labs, and support tickets | 28 |
 | `schema/option_c_spark_labs.sql` | FSU Spark Labs inventory: a research and makerspace lab | 30 |
 
-The team has not yet picked one of the three. Each file already runs
+The team picked Option A (24 tables) on 2026-10-19. If review cuts it
+below 15 tables, the team switches to Option B or C. Each file runs
 standalone against a fresh SQLite database.
 
 ## Database
