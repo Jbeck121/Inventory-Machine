@@ -23,9 +23,9 @@ def embed_text(text: str, cfg: ConfigParser) -> list[float]:
     Input: text -- string to embed. cfg -- loaded ConfigParser.
     Output: embedding vector as a list of floats.
     Details:
-        Calls the embedding model through the Ollama embed API. The
-        caller builds the input string. This function embeds the text
-        it receives.
+        Calls the embedding model through the Ollama embed API.
+        The caller builds the input string. This function embeds
+        the text that it receives.
     """
     model = cfg.get("models", "embedding_model")
     host = cfg.get("models", "ollama_base_url")
@@ -43,13 +43,36 @@ def embed_text(text: str, cfg: ConfigParser) -> list[float]:
             logger.warning("Failed to close Ollama embedding client")
 
 
+def embed_texts(texts: list[str], cfg: ConfigParser) -> list[list[float]]:
+    """
+    Input: texts -- strings to embed in one batch. cfg -- loaded ConfigParser.
+    Output: one embedding vector per input string, in input order.
+    Details:
+        Calls the configured Ollama embedding model once for the batch.
+    """
+    model = cfg.get("models", "embedding_model")
+    host = cfg.get("models", "ollama_base_url")
+    client = Client(host=host)
+    try:
+        response = client.embed(model=model, input=texts)
+        return [list(vector) for vector in response.embeddings]
+    except Exception:
+        logger.exception("Batch embedding model call failed")
+        raise
+    finally:
+        try:
+            client.close()
+        except Exception:
+            logger.warning("Failed to close Ollama embedding client")
+
+
 def get_chroma_collection(cfg: ConfigParser):
     """
     Input: cfg -- loaded ConfigParser.
     Output: a Chroma collection for inventory item vectors.
     Details:
-        Opens a PersistentClient at persist_dir. Creates the named
-        collection when it does not exist.
+        Opens a PersistentClient at persist_dir.
+        Creates the named collection if it does not exist.
     """
     try:
         persist_dir = cfg.get("chroma", "persist_dir")
@@ -74,9 +97,9 @@ def store_embedding(
         values. model_name -- Ollama embedding model tag.
     Output: None.
     Details:
-        Upserts the vector into Chroma under id=item_id. Inserts a
-        pointer row into embeddings_index. Does not store the vector
-        in SQL.
+        Upserts the vector in Chroma under id=item_id.
+        Inserts a pointer row into embeddings_index.
+        Does not store the vector in SQL.
     """
     try:
         collection.upsert(ids=[item_id], embeddings=[vector])
