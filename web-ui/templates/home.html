@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='home-style.css') }}">
     <title>Home page</title>
 </head>
     <body>
@@ -28,7 +29,10 @@
         <h3>Inventory Found</h3>
         <ul>
             {% for item in results %}
-                <li>{{ item["description"] }} — {{ item["location_name"] }}</li>
+                <li>
+                    <a href="{{ url_for('item_page', item_id=item['id']) }}">{{ item["description"] }}</a>
+                    — <a href="{{ url_for('location_page', location_id=item['location_id']) }}">{{ item["location_name"] }}</a>
+                </li>
             {% endfor %}
         </ul>
         {% else %}

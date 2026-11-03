@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, abort
 
 import sys 
 from pathlib import Path
@@ -124,6 +124,68 @@ def home():
         locations = locations,
         results=results)
 
+"""
+    For code below, the route and code having int = makes it so
+    that the URL captures the number and passes into the function.
+    Also makes it so a string never reaches the function
+"""
+
+@app.route("/location/<int:location_id>")
+def location_page(location_id):
+    location_row = db.fetch_one(
+        "SELECT id, name, parent_location_id FROM locations where id = ?", (location_id,),
+    )
+    if location_row is None:
+        abort(404)
+
+    location=dict(zip(["id", "name", "parent_location_id"],location_row))
+
+    item_columns=["id", "description", "confidence_score", "confidence_flag"]
+    item_rows = db.fetch_all(
+        "SELECT id, description, confidence_score, confidence_flag "
+        "FROM items WHERE location_id = ? ORDER BY description",
+        (location_id,),
+    )
+
+    items = rows_to_dicts(item_columns, item_rows)
+
+    return render_template("location.html", location=location, items=items)
+
+@app.route("/item/<item_id>")
+def item_page(item_id):
+    # No "int:" here: items.id is a TEXT UUID (yours are "item-1" and so
+    # on), so the default string converter is the right one.
+
+    # LEFT JOIN on both tables: location_id and cluster_id can be NULL,
+    # and an item with neither must still show up on this page.
+    columns = ["id", "description", "confidence_score", "confidence_flag",
+               "date_processed", "location_id", "location_name", "cluster_label"]
+    row = db.fetch_one(
+        "SELECT items.id, items.description, items.confidence_score, "
+        "items.confidence_flag, items.date_processed, items.location_id, "
+        "locations.name, clusters.label "
+        "FROM items "
+        "LEFT JOIN locations ON items.location_id = locations.id "
+        "LEFT JOIN clusters ON items.cluster_id = clusters.id "
+        "WHERE items.id = ?",
+        (item_id,),
+    )
+    if row is None:
+        abort(404)
+    item = dict(zip(columns, row))
+
+    # Second query for tags: item_tags is the junction table, and the
+    # JOIN swaps each tag_id for its readable name. Each result row is a
+    # 1-tuple, so r[0] pulls the name out.
+    tag_rows = db.fetch_all(
+        "SELECT tags.name FROM item_tags "
+        "JOIN tags ON item_tags.tag_id = tags.id "
+        "WHERE item_tags.item_id = ? ORDER BY tags.name",
+        (item_id,),
+    )
+    tags = [r[0] for r in tag_rows]
+
+    return render_template("item.html", item=item, tags=tags)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5050, threaded=False)

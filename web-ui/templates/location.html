@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ location["name"] }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='home-style.css') }}">
+</head>
+<body>
+    <!-- url_for takes the FUNCTION name, not the URL, so the link
+         keeps working if you ever change the route path. -->
+    <p><a href="{{ url_for('home') }}">Back to search</a></p>
+
+    <h2>{{ location["name"] }}</h2>
+
+    {% if items %}
+        <ul>
+            {% for item in items %}
+                <li><a href="{{ url_for('item_page', item_id=item['id']) }}">{{ item["description"] }}</a> ({{ item["confidence_flag"] }})</li>
+                            {% endfor %}
+        </ul>
+    {% else %}
+        <p>Nothing is stored here yet.</p>
+    {% endif %}
+</body>
+</html>
