@@ -79,17 +79,21 @@ def home():
 
     
     if search_term:
-        """
-        for item in ITEMS:
-            item_name_lowercase = item["name"].lower()
-            
-            if search_term.lower() in item_name_lowercase:
-                results.append(item)
-        """
+        # One pattern, used twice: once against the description and once
+        # against the tag names. %...% means "contains", as before.
+        pattern = f"%{search_term}%"
 
+        # LEFT JOIN, not JOIN, for the tag tables. An item with no tags
+        # (real pipeline output can have them) would vanish from a plain
+        # JOIN, even if its description matched the search.
         rows = db.fetch_all(
-            query + " WHERE items.description LIKE ?",
-            (f"%{search_term}%",),
+            "SELECT DISTINCT items.id, items.description, items.location_id, locations.name "
+            "FROM items "
+            "JOIN locations ON items.location_id = locations.id "
+            "LEFT JOIN item_tags ON item_tags.item_id = items.id "
+            "LEFT JOIN tags ON item_tags.tag_id = tags.id "
+            "WHERE items.description LIKE ? OR tags.name LIKE ?",
+            (pattern, pattern),
         )
         results = rows_to_dicts(columns, rows)
     #If block serving to find a specific item
