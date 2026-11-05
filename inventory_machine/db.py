@@ -7,6 +7,7 @@ Description:
     Every SQL call uses this single Inventory Machine data access layer.
 """
 # Imports
+from contextlib import contextmanager
 import configparser
 import logging
 import sqlite3
@@ -113,6 +114,7 @@ class Database:
             logger.exception("Database config is missing backend")
             raise
         self._backend = backend
+        self._in_transaction = False
         if backend == SQLITE_BACKEND:
             try:
                 sqlite_path = cfg.get("database", "sqlite_path")
@@ -193,26 +195,56 @@ class Database:
             return query.replace("?", "%s")
         return query
 
+    @contextmanager
+    def transaction(self):
+        """
+        Input: None.
+        Output: a context manager for one SQL transaction.
+        Details:
+            execute() does not commit or roll back inside this block.
+            The block commits at the end. On error, this method logs,
+            rolls back, and raises the same error.
+            Nested transaction() calls raise RuntimeError.
+        """
+        if self._in_transaction:
+            raise RuntimeError("Nested Database.transaction() is not supported")
+        self._in_transaction = True
+        try:
+            yield
+            self._conn.commit()
+        except Exception:
+            logger.exception("Database transaction failed")
+            try:
+                self._conn.rollback()
+            except Exception:
+                logger.exception("Rollback failed after transaction error")
+            raise
+        finally:
+            self._in_transaction = False
+
     def execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
         """
         Input: query -- a parameterized SQL statement. params -- bind values.
         Output: the cursor after the statement runs.
         Details:
             The driver binds params. This method does not join strings
-            to build SQL. It commits after success.
+            to build SQL. Outside a transaction it commits after success.
+            Inside a transaction it does not commit or roll back.
             Callers can read cursor.lastrowid.
         """
         try:
             cursor = self._conn.cursor()
             cursor.execute(self._parameterized_query(query), params)
-            self._conn.commit()
+            if not self._in_transaction:
+                self._conn.commit()
             return cursor
         except Exception:
             logger.exception("SQL execute failed")
-            try:
-                self._conn.rollback()
-            except Exception:
-                logger.exception("Rollback failed after execute error")
+            if not self._in_transaction:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    logger.exception("Rollback failed after execute error")
             raise
 
     def fetch_one(self, query: str, params: tuple = ()) -> tuple | None:

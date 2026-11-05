@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import configparser
+import hashlib
+import logging
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+logger = logging.getLogger(__name__)
 
 
 def find_image_files(input_dir: str | Path) -> list[Path]:
@@ -154,8 +157,8 @@ def extract_photo_metadata(image_path: str | Path) -> dict:
 
             gps_lat = None
             gps_lon = None
-            gps_info = exif.get(34853)
-            if isinstance(gps_info, dict):
+            gps_info = exif.get_ifd(0x8825)
+            if gps_info:
                 gps_lat = _gps_to_decimal(gps_info.get(2), gps_info.get(1))
                 gps_lon = _gps_to_decimal(gps_info.get(4), gps_info.get(3))
 
@@ -168,6 +171,7 @@ def extract_photo_metadata(image_path: str | Path) -> dict:
                 "height_px": height_px,
             }
     except (FileNotFoundError, OSError, ValueError):
+        logger.warning("Cannot read photo metadata from %s", path)
         return {"date_taken": None, "gps_lat": None, "gps_lon": None, "width_px": None, "height_px": None}
 
 
@@ -190,3 +194,78 @@ def collect_input_files(cfg: configparser.ConfigParser) -> list[dict]:
             }
         )
     return records
+
+
+def prepare_image(image_path: str, cfg: configparser.ConfigParser) -> str:
+    """
+    Input: image_path -- source photo path, cfg -- loaded ConfigParser.
+    Output: path of the prepared copy as a string.
+    Details:
+        Fixes EXIF orientation. Resizes the photo when the long side is
+        larger than [vision] image_max_px. Writes the copy into
+        [paths] prepared_dir.
+    """
+    source = Path(image_path).resolve()
+    prepared_dir = Path(cfg.get("paths", "prepared_dir"))
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(str(source).encode("utf-8")).hexdigest()[:16]
+    dest = prepared_dir / f"{digest}{source.suffix.lower()}"
+    try:
+        with Image.open(source) as src:
+            src.load()
+            image = ImageOps.exif_transpose(src)
+            max_px = cfg.getint("vision", "image_max_px")
+            width, height = image.size
+            longest = max(width, height)
+            if longest > max_px:
+                scale = max_px / longest
+                image = image.resize(
+                    (max(1, round(width * scale)), max(1, round(height * scale))),
+                    Image.Resampling.LANCZOS,
+                )
+            if dest.suffix in {".jpg", ".jpeg"} and image.mode in {"RGBA", "P", "LA"}:
+                image = image.convert("RGB")
+            image.save(dest)
+    except OSError:
+        logger.warning("Cannot prepare image %s", image_path)
+        raise
+    return str(dest)
+
+
+def resolve_location_id(db, location_name: str | None, cfg: configparser.ConfigParser) -> int | None:
+    """
+    Input: db -- Database, location_name -- nested location string, cfg -- ConfigParser.
+    Output: id of the innermost location, or None when the name is empty.
+    Details:
+        Splits the name on [location] folder_separator. Creates each missing
+        locations row. A second call with the same name creates no rows.
+    """
+    if location_name is None:
+        return None
+    name = location_name.strip()
+    if not name:
+        return None
+    separator = cfg.get("location", "folder_separator").strip()
+    parts = [part.strip() for part in name.split(separator) if part.strip()]
+    if not parts:
+        return None
+    parent_id: int | None = None
+    for part in parts:
+        if parent_id is None:
+            row = db.fetch_one(
+                "SELECT id FROM locations WHERE name = ? AND parent_location_id IS NULL",
+                (part,),
+            )
+        else:
+            row = db.fetch_one(
+                "SELECT id FROM locations WHERE name = ? AND parent_location_id = ?",
+                (part, parent_id),
+            )
+        if row is not None:
+            parent_id = row[0]
+            continue
+        parent_id = db.execute(
+            "INSERT INTO locations (name, parent_location_id) VALUES (?, ?)",
+            (part, parent_id),
+        ).lastrowid
+    return parent_id

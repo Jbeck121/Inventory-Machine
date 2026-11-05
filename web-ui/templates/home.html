@@ -8,21 +8,44 @@
 </head>
     <body>
         <h2>Inventory Search</h2>
-        <form>
+        <p><a href="{{ url_for('scan_page') }}">Scan a QR code</a></p>
+        <form method="get" action="{{ url_for('home') }}">
             <label for="inventory">Search by name or tag:</label>
-            <input type="text" id="inventory" name ="search"/>
-            <button>Search</button>
-        </form>
+            <input type="text" id="inventory" name="search" value="{{ search_term }}"/>
 
-        <form>
             <label for="location">Locations:</label>
             <select id="location" name="location">
                 <option value="">All Locations</option>
                 {% for location_option in locations %}
-                    <option value="{{ location_option['id'] }}">{{ location_option['name'] }}</option>
+                    <option value="{{ location_option['id'] }}" {% if location_id == location_option['id'] %}selected{% endif %}>{{ location_option['name'] }}</option>
                 {% endfor %}
             </select>
-            <button>Filter Search</button>
+
+            <label for="cluster">Clusters:</label>
+            <select id="cluster" name="cluster">
+                <option value="">All Clusters</option>
+                <option value="unclustered" {% if unclustered %}selected{% endif %}>Unclustered</option>
+                {% for cluster_option in clusters %}
+                    <option value="{{ cluster_option['id'] }}" {% if cluster_id == cluster_option['id'] %}selected{% endif %}>{{ cluster_option['label'] or ("Cluster " ~ cluster_option['id']) }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="tag">Tags:</label>
+            <select id="tag" name="tag">
+                <option value="">All Tags</option>
+                {% for tag_option in tags %}
+                    <option value="{{ tag_option['id'] }}" {% if tag_id == tag_option['id'] %}selected{% endif %}>{{ tag_option['name'] }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="confidence">Confidence:</label>
+            <select id="confidence" name="confidence">
+                <option value="">All Flags</option>
+                <option value="ok" {% if confidence_flag == "ok" %}selected{% endif %}>ok</option>
+                <option value="low" {% if confidence_flag == "low" %}selected{% endif %}>low</option>
+            </select>
+
+            <button>Search</button>
         </form>
 
         {% if results %}
@@ -31,12 +54,22 @@
             {% for item in results %}
                 <li>
                     <a href="{{ url_for('item_page', item_id=item['id']) }}">{{ item["description"] }}</a>
-                    — <a href="{{ url_for('location_page', location_id=item['location_id']) }}">{{ item["location_name"] }}</a>
+                    —
+                    {% if item["location_id"] %}
+                        <a href="{{ url_for('location_page', location_id=item['location_id']) }}">{{ item["location_name"] }}</a>
+                    {% else %}
+                        not assigned
+                    {% endif %}
+                    — {{ item["cluster_label"] or "none" }}
+                    — {{ item["confidence_flag"] }}
+                    {% if item["tags"] %}
+                        — {{ item["tags"] | join(", ") }}
+                    {% endif %}
                 </li>
             {% endfor %}
         </ul>
         {% else %}
-            <p>Search a name or pick filters to see inventory.</p>
+            <p>No items match.</p>
         {% endif %}
     </body>
 </html>

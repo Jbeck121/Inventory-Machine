@@ -171,3 +171,59 @@ def test_all_schemas_share_images_columns(schema_file, table_count):
         assert len(tables) == table_count
     finally:
         database.get_connection().close()
+
+
+@pytest.mark.parametrize(
+    "schema_file",
+    [
+        "schema.sql",
+        "option_a_home_organizer.sql",
+        "option_b_university_it.sql",
+        "option_c_spark_labs.sql",
+    ],
+)
+def test_all_schemas_allow_null_vision_item_id(schema_file):
+    database = Database(sqlite_cfg())
+    try:
+        database.load_schema(str(SCHEMA_PATH.with_name(schema_file)))
+        columns = {
+            row[1]: row for row in database.fetch_all("PRAGMA table_info(vision_model_outputs)")
+        }
+        assert columns["item_id"][2] == "VARCHAR(36)"
+        assert columns["item_id"][3] == 0
+        assert columns["file_path"][2] == "TEXT"
+        assert columns["file_path"][3] == 1
+        database.execute(
+            "INSERT INTO vision_model_outputs "
+            "(item_id, file_path, model_name, attempt_number, raw_response) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (None, "/photos/club.jpg", "minicpm-v4.5", 1, "bad json"),
+        )
+        assert database.fetch_one(
+            "SELECT item_id, file_path FROM vision_model_outputs"
+        ) == (None, "/photos/club.jpg")
+    finally:
+        database.get_connection().close()
+
+
+def test_transaction_commits(db):
+    with db.transaction():
+        db.execute("INSERT INTO locations (name) VALUES (?)", ("garage",))
+    assert db.fetch_one("SELECT name FROM locations") == ("garage",)
+
+
+def test_transaction_rolls_back(db):
+    with pytest.raises(RuntimeError, match="boom"):
+        with db.transaction():
+            db.execute("INSERT INTO locations (name) VALUES (?)", ("garage",))
+            raise RuntimeError("boom")
+    assert db.fetch_one("SELECT COUNT(*) FROM locations") == (0,)
+
+
+def test_transaction_rejects_nesting(db):
+    with db.transaction():
+        with pytest.raises(RuntimeError, match="Nested"):
+            with db.transaction():
+                db.execute("INSERT INTO locations (name) VALUES (?)", ("nested",))
+        db.execute("INSERT INTO locations (name) VALUES (?)", ("garage",))
+    assert db.fetch_all("SELECT name FROM locations") == [("garage",)]

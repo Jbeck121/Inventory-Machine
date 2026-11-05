@@ -3,7 +3,7 @@ body{
     justify-content:center;
     align-items:center;
     flex-direction:column;
-    height:100vh;
+    min-height:100vh;
     font-family:sans-serif;
 }
 
@@ -29,4 +29,19 @@ form > button{
     color:white;
     padding:5px 20px;
     border-radius:10px;
+}
+
+form label,
+form input,
+form select{
+    display:block;
+    margin-block-end:0.5rem;
+}
+
+#scan-video{
+    max-width:100%;
+}
+
+#scan-canvas{
+    display:none;
 }

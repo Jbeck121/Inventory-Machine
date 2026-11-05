@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan QR code</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='home-style.css') }}">
+</head>
+<body>
+    <p><a href="{{ url_for('home') }}">Back to search</a></p>
+    <h2>Scan a QR code</h2>
+    <p id="scan-status">Point the camera at an inventory QR code.</p>
+    <video id="scan-video" autoplay playsinline></video>
+    <canvas id="scan-canvas"></canvas>
+    <script src="{{ url_for('static', filename='vendor/jsQR.js') }}"></script>
+    <script>
+        (function () {
+            var video = document.getElementById("scan-video");
+            var canvas = document.getElementById("scan-canvas");
+            var ctx = canvas.getContext("2d");
+            var status = document.getElementById("scan-status");
+            var stream = null;
+            var running = true;
+
+            function stopCamera() {
+                running = false;
+                if (!stream) {
+                    return;
+                }
+                stream.getTracks().forEach(function (track) {
+                    track.stop();
+                });
+                stream = null;
+            }
+
+            function inventoryPath(text) {
+                var parsed;
+                try {
+                    parsed = new URL(text, location.origin);
+                } catch (err) {
+                    return null;
+                }
+                if (!/^\/(location\/\d+|item\/[A-Za-z0-9-]+)$/.test(parsed.pathname)) {
+                    return null;
+                }
+                return parsed.pathname;
+            }
+
+            function tick() {
+                if (!running) {
+                    return;
+                }
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    var code = jsQR(imageData.data, imageData.width, imageData.height);
+                    if (code && code.data) {
+                        var path = inventoryPath(code.data);
+                        if (path) {
+                            stopCamera();
+                            location.assign(path);
+                            return;
+                        }
+                        status.textContent = "Not an inventory code";
+                    }
+                }
+                requestAnimationFrame(tick);
+            }
+
+            if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                status.textContent = "Camera is not available. Open this page on https or localhost and allow camera access.";
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(function (mediaStream) {
+                    stream = mediaStream;
+                    video.srcObject = mediaStream;
+                    video.setAttribute("playsinline", "true");
+                    return video.play();
+                })
+                .then(function () {
+                    requestAnimationFrame(tick);
+                })
+                .catch(function () {
+                    status.textContent = "Camera access was denied or is not available. Open this page on https or localhost.";
+                });
+        })();
+    </script>
+</body>
+</html>

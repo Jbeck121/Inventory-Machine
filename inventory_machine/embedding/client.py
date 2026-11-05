@@ -3,15 +3,17 @@ Author: LlmConnection
 Date:   2026
 
 Description:
-    Calls the configured embedding model through Ollama. Stores
-    vectors in ChromaDB. Writes a pointer row to embeddings_index.
+    Calls the configured embedding model through Ollama first.
+    LiteLLM is an optional fallback when Ollama fails.
+    Stores vectors in ChromaDB. Writes a pointer row to embeddings_index.
 """
 # Imports
 import logging
 from configparser import ConfigParser
 
 import chromadb
-from ollama import Client
+
+from inventory_machine.llm_gateway import embed
 
 # Globals
 logger = logging.getLogger(__name__)
@@ -23,24 +25,11 @@ def embed_text(text: str, cfg: ConfigParser) -> list[float]:
     Input: text -- string to embed. cfg -- loaded ConfigParser.
     Output: embedding vector as a list of floats.
     Details:
-        Calls the embedding model through the Ollama embed API.
+        Calls the embedding model through Ollama, then LiteLLM if needed.
         The caller builds the input string. This function embeds
         the text that it receives.
     """
-    model = cfg.get("models", "embedding_model")
-    host = cfg.get("models", "ollama_base_url")
-    client = Client(host=host)
-    try:
-        response = client.embed(model=model, input=text)
-        return list(response.embeddings[0])
-    except Exception:
-        logger.exception("Embedding model call failed")
-        raise
-    finally:
-        try:
-            client.close()
-        except Exception:
-            logger.warning("Failed to close Ollama embedding client")
+    return embed_texts([text], cfg)[0]
 
 
 def embed_texts(texts: list[str], cfg: ConfigParser) -> list[list[float]]:
@@ -48,22 +37,15 @@ def embed_texts(texts: list[str], cfg: ConfigParser) -> list[list[float]]:
     Input: texts -- strings to embed in one batch. cfg -- loaded ConfigParser.
     Output: one embedding vector per input string, in input order.
     Details:
-        Calls the configured Ollama embedding model once for the batch.
+        Calls the configured embedding model once for the batch.
+        Uses Ollama first, then optional LiteLLM fallback.
     """
     model = cfg.get("models", "embedding_model")
-    host = cfg.get("models", "ollama_base_url")
-    client = Client(host=host)
     try:
-        response = client.embed(model=model, input=texts)
-        return [list(vector) for vector in response.embeddings]
+        return embed(cfg, model, texts)
     except Exception:
         logger.exception("Batch embedding model call failed")
         raise
-    finally:
-        try:
-            client.close()
-        except Exception:
-            logger.warning("Failed to close Ollama embedding client")
 
 
 def get_chroma_collection(cfg: ConfigParser):
@@ -94,18 +76,14 @@ def store_embedding(
     """
     Input: db -- Database from the data access layer. collection --
         Chroma collection. item_id -- item UUID. vector -- embedding
-        values. model_name -- Ollama embedding model tag.
+        values. model_name -- embedding model id.
     Output: None.
     Details:
-        Upserts the vector in Chroma under id=item_id.
-        Inserts a pointer row into embeddings_index.
+        Inserts a pointer row into embeddings_index, then upserts the
+        vector in Chroma under id=item_id. Inside a Database transaction,
+        a Chroma error rolls back the pointer row.
         Does not store the vector in SQL.
     """
-    try:
-        collection.upsert(ids=[item_id], embeddings=[vector])
-    except Exception:
-        logger.exception("Failed to upsert embedding into Chroma")
-        raise
     try:
         db.execute(
             "INSERT INTO embeddings_index "
@@ -121,4 +99,9 @@ def store_embedding(
         )
     except Exception:
         logger.exception("Failed to insert embeddings_index pointer row")
+        raise
+    try:
+        collection.upsert(ids=[item_id], embeddings=[vector])
+    except Exception:
+        logger.exception("Failed to upsert embedding into Chroma")
         raise

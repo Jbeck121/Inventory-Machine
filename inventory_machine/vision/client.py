@@ -3,21 +3,35 @@ Author: LlmConnection
 Date:   2026
 
 Description:
-    Calls the configured vision model through Ollama.
-    Returns parsed output and raw attempts for storage after the item row exists.
+    Calls the configured vision model through Ollama first.
+    LiteLLM is an optional fallback when Ollama fails.
+    Returns parsed output and raw attempts for storage with the source
+    photo path. item_id is NULL when vision does not create an item.
 """
 # Imports
+import base64
 import json
 import logging
 from configparser import ConfigParser
 from pathlib import Path
 
-from ollama import AsyncClient
+from inventory_machine.llm_gateway import (
+    async_complete_chat,
+    failure_model_label,
+)
 
 # Globals
 logger = logging.getLogger(__name__)
 
 REQUIRED_VISION_KEYS = ("tags", "description", "confidence")
+
+_MIME_BY_SUFFIX = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
 
 
 class VisionModelError(Exception):
@@ -63,37 +77,74 @@ def _parse_vision_json(raw_response: str) -> dict:
     }
 
 
-async def _chat_once(client: AsyncClient, model: str, messages: list[dict]) -> tuple[str, Exception | None]:
+def _image_data_uri(image_path: str) -> str:
     """
-    Input: client -- Ollama AsyncClient. model -- model tag.
+    Input: image_path -- path to the photo.
+    Output: data URI with the MIME type from the file suffix.
+    """
+    suffix = Path(image_path).suffix.lower()
+    mime = _MIME_BY_SUFFIX.get(suffix, "image/jpeg")
+    try:
+        image_bytes = Path(image_path).read_bytes()
+    except OSError:
+        logger.exception("Failed to read vision image")
+        raise
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def _vision_messages(prompt_text: str, data_uri: str) -> list[dict]:
+    """
+    Input: prompt_text -- user prompt. data_uri -- image data URI.
+    Output: one user message with text and image_url parts.
+    """
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt_text},
+                {"type": "image_url", "image_url": {"url": data_uri}},
+            ],
+        }
+    ]
+
+
+async def _chat_once(
+    cfg: ConfigParser,
+    model: str,
+    messages: list[dict],
+    json_mode: bool,
+) -> tuple[str, str, Exception | None]:
+    """
+    Input: cfg -- loaded ConfigParser. model -- [models] model id.
         messages -- chat messages, including the image.
-    Output: (raw text, error or None).
+        json_mode -- request a JSON object if True.
+    Output: (raw text, attempt model label, error or None).
     Details:
-        Calls chat with format=json. If the call fails, this method logs
-        the error and returns its text for the caller to store.
+        If the call fails, this method logs the error and returns its
+        text for the caller to store.
     """
     try:
-        response = await client.chat(model=model, messages=messages, format="json")
-        content = response.message.content
-        if content is None:
-            return "", None
-        return str(content), None
+        text, used = await async_complete_chat(cfg, model, messages, json_mode)
+        return text, used, None
     except Exception as exc:
-        logger.exception("Ollama vision chat failed for model %s", model)
-        return str(exc), exc
+        logger.exception("Vision chat failed for model %s", model)
+        return str(exc), failure_model_label(cfg, model), exc
 
 
 async def store_vision_attempt(
     db,
-    item_id: str,
+    item_id: str | None,
+    file_path: str,
     model_name: str,
     attempt_number: int,
     raw_response: str,
 ) -> None:
     """
     Input: db -- Database from the data access layer. item_id -- item
-        UUID. model_name -- Ollama model tag. attempt_number -- 1-based
-        attempt index. raw_response -- raw model text for this attempt.
+        UUID, or None when vision created no item. file_path -- source
+        photo path. model_name -- gateway model id. attempt_number --
+        1-based attempt index. raw_response -- raw model text.
     Output: None.
     Details:
         Inserts one audit row into vision_model_outputs.
@@ -102,9 +153,9 @@ async def store_vision_attempt(
     try:
         db.execute(
             "INSERT INTO vision_model_outputs "
-            "(item_id, model_name, attempt_number, raw_response) "
-            "VALUES (?, ?, ?, ?)",
-            (item_id, model_name, attempt_number, raw_response),
+            "(item_id, file_path, model_name, attempt_number, raw_response) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (item_id, file_path, model_name, attempt_number, raw_response),
         )
     except Exception:
         logger.exception("Failed to store vision model attempt")
@@ -122,6 +173,9 @@ async def call_vision_model(
         Retries bad JSON on the primary model, then tries the fallback.
         Raises VisionModelError with all raw attempts if both models fail.
         The caller stores the attempts after it inserts the item.
+        Each attempt label is the Ollama model id, or litellm/<id>
+        when the gateway served the call. A transport, HTTP, or
+        error-body failure on Ollama uses LiteLLM when configured.
     """
     prompt_path = cfg.get("vision", "prompt_template")
     try:
@@ -130,67 +184,56 @@ async def call_vision_model(
         logger.exception("Failed to read vision prompt template")
         raise
 
-    messages = [
-        {
-            "role": "user",
-            "content": prompt_text,
-            "images": [image_path],
-        }
-    ]
+    messages = _vision_messages(prompt_text, _image_data_uri(image_path))
     primary = cfg.get("models", "vision_model")
     fallback = cfg.get("models", "vision_model_fallback")
     max_retries = cfg.getint("vision", "max_retries")
-    host = cfg.get("models", "ollama_base_url")
+    json_mode = cfg.getboolean("vision", "json_mode")
 
-    client = AsyncClient(host=host)
     model = primary
     fallback_used = False
     attempt_number = 0
     attempts: list[tuple[str, int, str]] = []
-    try:
-        while True:
-            attempt_number += 1
-            raw_response, call_error = await _chat_once(client, model, messages)
-            attempts.append((model, attempt_number, raw_response))
+    while True:
+        attempt_number += 1
+        raw_response, used_model, call_error = await _chat_once(
+            cfg, model, messages, json_mode
+        )
+        attempts.append((used_model, attempt_number, raw_response))
 
-            if call_error is not None:
-                if model == primary and not fallback_used:
-                    logger.warning(
-                        "Primary vision model failed. The client tries fallback model %s",
-                        fallback,
-                    )
-                    model = fallback
-                    fallback_used = True
-                    continue
-                logger.warning("Vision model failed after %s attempts", len(attempts))
-                raise VisionModelError(str(call_error), attempts) from call_error
-
-            try:
-                return _parse_vision_json(raw_response), attempts
-            except (json.JSONDecodeError, ValueError) as exc:
-                if model == primary and attempt_number < max_retries:
-                    logger.warning(
-                        "Vision model JSON is invalid on attempt %s. The client retries.",
-                        attempt_number,
-                    )
-                    continue
-                if model == primary and not fallback_used:
-                    logger.warning(
-                        "Primary vision model exceeded retries. The client tries fallback model %s",
-                        fallback,
-                    )
-                    model = fallback
-                    fallback_used = True
-                    continue
-                logger.exception(
-                    "Vision model output lacks valid JSON or a required key"
+        if call_error is not None:
+            if model == primary and not fallback_used:
+                logger.warning(
+                    "Primary vision model failed. The client tries fallback model %s",
+                    fallback,
                 )
-                raise VisionModelError(
-                    "Vision model output lacks valid JSON or a required key: "
-                    + str(exc), attempts
-                ) from exc
-    finally:
+                model = fallback
+                fallback_used = True
+                continue
+            logger.warning("Vision model failed after %s attempts", len(attempts))
+            raise VisionModelError(str(call_error), attempts) from call_error
+
         try:
-            await client.close()
-        except Exception:
-            logger.warning("Failed to close Ollama vision client")
+            return _parse_vision_json(raw_response), attempts
+        except (json.JSONDecodeError, ValueError) as exc:
+            if model == primary and attempt_number < max_retries:
+                logger.warning(
+                    "Vision model JSON is invalid on attempt %s. The client retries.",
+                    attempt_number,
+                )
+                continue
+            if model == primary and not fallback_used:
+                logger.warning(
+                    "Primary vision model exceeded retries. The client tries fallback model %s",
+                    fallback,
+                )
+                model = fallback
+                fallback_used = True
+                continue
+            logger.exception(
+                "Vision model output lacks valid JSON or a required key"
+            )
+            raise VisionModelError(
+                "Vision model output lacks valid JSON or a required key: "
+                + str(exc), attempts
+            ) from exc

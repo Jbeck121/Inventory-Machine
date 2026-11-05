@@ -1,169 +1,283 @@
 from flask import Flask, render_template, request, abort
 
-import sys 
+import logging
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-#allows this file to work with directories and files in the repo root outside of this directory
 
 from inventory_machine.config import load_config
 from inventory_machine.db import Database
 
+logger = logging.getLogger(__name__)
+
 config = load_config()
 db = Database(config)
-#reads from config.ini in repo then opens connection to sqlite file 
+
+ITEM_LIST_COLUMNS = [
+    "id",
+    "description",
+    "location_id",
+    "location_name",
+    "cluster_label",
+    "confidence_flag",
+]
+
+ITEM_LIST_SQL = (
+    "SELECT DISTINCT items.id, items.description, items.location_id, "
+    "locations.name, clusters.label, items.confidence_flag "
+    "FROM items "
+    "LEFT JOIN locations ON items.location_id = locations.id "
+    "LEFT JOIN clusters ON items.cluster_id = clusters.id "
+    "LEFT JOIN item_tags ON items.id = item_tags.item_id "
+    "LEFT JOIN tags ON item_tags.tag_id = tags.id"
+)
+
 
 def rows_to_dicts(columns, rows):
     """
-    Function to convert what is gotten from db.fetch_all(), list of tuples
-    with positional assess, into a list of dictionaries accessed by name
-    to allow for name access rather than position based
-
-    columns must list the SELECT's columns in the EXACT order they
-    were requested -- zip() pairs them up purely by position, with
-    no idea what any value actually means.
+    Input: columns -- SELECT column names in order. rows -- tuples from fetch_all.
+    Output: a list of dicts keyed by column name.
+    Details:
+        zip() pairs names to values by position.
     """
     return [dict(zip(columns, row)) for row in rows]
 
-"""
-    ITEMS = [
-        {"name": "Cordless drill", "category": "tools", "location": "garage"},
-        {"name": "Claw hammer", "category": "tools", "location": "garage"},
-        {"name": "Ceramic mug", "category": "kitchen", "location": "kitchen"},
-        {"name": "Cast iron skillet", "category": "kitchen", "location": "kitchen"},
-        {"name": "USB cable", "category": "electronics", "location": "office"},
-    ]
 
-    category_set = set()
-    location_set = set()
-    for item in ITEMS:
-        category_set.add(item["category"])
-        location_set.add(item["location"])
+def _parse_optional_int(raw):
+    """
+    Input: raw -- a query string value or None.
+    Output: an int, or None when the value is empty or not an integer.
+    Details:
+        Invalid values are ignored.
+    """
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring invalid integer query value: %s", raw)
+        return None
 
-    categories = sorted(category_set)
-    locations = sorted(location_set)
-    #Test items and categories
-"""
+
+def _parse_home_filters(args):
+    """
+    Input: args -- Flask request.args or a mapping with the same keys.
+    Output: search text and validated filter values.
+    Details:
+        cluster=unclustered means cluster_id IS NULL. Invalid ints are dropped.
+    """
+    search = args.get("search") or ""
+    cluster_raw = args.get("cluster") or ""
+    unclustered = cluster_raw == "unclustered"
+    flag_raw = args.get("confidence") or ""
+    if flag_raw in ("ok", "low"):
+        confidence_flag = flag_raw
+    else:
+        if flag_raw:
+            logger.warning("Ignoring invalid confidence flag: %s", flag_raw)
+        confidence_flag = None
+    return {
+        "search": search,
+        "location_id": _parse_optional_int(args.get("location")),
+        "cluster_id": None if unclustered else _parse_optional_int(cluster_raw),
+        "unclustered": unclustered,
+        "tag_id": _parse_optional_int(args.get("tag")),
+        "confidence_flag": confidence_flag,
+    }
+
+
+def _home_where(filters):
+    """
+    Input: filters -- dict from _parse_home_filters.
+    Output: (WHERE clause including leading WHERE, or empty; bind params).
+    Details:
+        Clauses are fixed strings. User values go in the params list.
+    """
+    clauses = []
+    params = []
+    search = filters["search"]
+    if search:
+        like = f"%{search}%"
+        clauses.append(
+            "(LOWER(items.description) LIKE LOWER(?) "
+            "OR LOWER(tags.name) LIKE LOWER(?))"
+        )
+        params.extend([like, like])
+    if filters["location_id"] is not None:
+        clauses.append("items.location_id = ?")
+        params.append(filters["location_id"])
+    if filters["unclustered"]:
+        clauses.append("items.cluster_id IS NULL")
+    elif filters["cluster_id"] is not None:
+        clauses.append("items.cluster_id = ?")
+        params.append(filters["cluster_id"])
+    if filters["tag_id"] is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM item_tags "
+            "WHERE item_tags.item_id = items.id AND item_tags.tag_id = ?)"
+        )
+        params.append(filters["tag_id"])
+    if filters["confidence_flag"] is not None:
+        clauses.append("items.confidence_flag = ?")
+        params.append(filters["confidence_flag"])
+    if not clauses:
+        return "", params
+    return " WHERE " + " AND ".join(clauses), params
+
+
+def _attach_tags(results):
+    """
+    Input: results -- item dicts that include an id key.
+    Output: the same list, each item given a tags name list.
+    Details:
+        One query loads tags for the listed ids. Placeholders are not user text.
+    """
+    ids = [item["id"] for item in results]
+    for item in results:
+        item["tags"] = []
+    if not ids:
+        return results
+    placeholders = ",".join("?" * len(ids))
+    tag_rows = db.fetch_all(
+        "SELECT item_tags.item_id, tags.name FROM item_tags "
+        "JOIN tags ON item_tags.tag_id = tags.id "
+        f"WHERE item_tags.item_id IN ({placeholders}) "
+        "ORDER BY tags.name",
+        tuple(ids),
+    )
+    by_item = {item_id: [] for item_id in ids}
+    for item_id, name in tag_rows:
+        by_item[item_id].append(name)
+    for item in results:
+        item["tags"] = by_item.get(item["id"], [])
+    return results
 
 
 app = Flask(__name__)
-#__name__ tells flask where the file lives 
 
-@app.route('/')
-#this registers this function as a handler for a specific URL
 
+@app.route("/")
 def home():
-#this function is used to return an actual response sent to the browser 
-    search_term = request.args.get("search", "")
-    #gets the argument set by the form with the search name, second string is a fallback
-
-    location_id = request.args.get("location")
-
-    filter_submitted = location_id is not None
-    #filter_submitted serves to check if user submitted a filter for the inventory search
-
-    location_id = location_id or ""
-
-    location_rows = db.fetch_all("SELECT id, name FROM locations ORDER BY name")
-    locations = rows_to_dicts(["id", "name"], location_rows)
-    #pulls fresh data from the sqlite DB set Selecting by ID and ordering it by item name
-    #uses the function to convert tuples to dictionary as indicated before
-    
-    results = []
-    #serves as the array holding the inventory
-
-    query = (
-        "SELECT items.id, items.description, items.location_id, locations.name "
-        "FROM items JOIN locations ON items.location_id = locations.id"
+    """
+    Input: search, location, cluster, tag, and confidence query args.
+    Output: the home page with matching items.
+    Details:
+        First load lists every item. Filters combine with AND.
+    """
+    filters = _parse_home_filters(request.args)
+    locations = rows_to_dicts(
+        ["id", "name"],
+        db.fetch_all("SELECT id, name FROM locations ORDER BY name"),
     )
-    columns = ["id", "description", "location_id", "location_name"]
-
-    
-    if search_term:
-        # One pattern, used twice: once against the description and once
-        # against the tag names. %...% means "contains", as before.
-        pattern = f"%{search_term}%"
-
-        # LEFT JOIN, not JOIN, for the tag tables. An item with no tags
-        # (real pipeline output can have them) would vanish from a plain
-        # JOIN, even if its description matched the search.
-        rows = db.fetch_all(
-            "SELECT DISTINCT items.id, items.description, items.location_id, locations.name "
-            "FROM items "
-            "JOIN locations ON items.location_id = locations.id "
-            "LEFT JOIN item_tags ON item_tags.item_id = items.id "
-            "LEFT JOIN tags ON item_tags.tag_id = tags.id "
-            "WHERE items.description LIKE ? OR tags.name LIKE ?",
-            (pattern, pattern),
-        )
-        results = rows_to_dicts(columns, rows)
-    #If block serving to find a specific item
-    elif filter_submitted:
-
-        """
-            if category or location:
-                for item in ITEMS:
-                    matches_category = (not category) or (item["category"] == category)
-                    matches_location = (not location) or (item["location"] == location)
-                    if matches_category and matches_location:
-                        results.append(item)
-            #used if filter was submitted and specific category or location is chosen
-        """
-        if location_id:
-            rows = db.fetch_all(
-                query + " WHERE items.location_id = ?",
-                (location_id,),
-            )
-            results = rows_to_dicts(columns, rows)
-            
-        #used if filter was submitted and specific category or location is chosen
-        else:
-            rows = db.fetch_all(query)
-            results = rows_to_dicts(columns, rows)
-        #used if filter was submitted with all locations and all categories
-
+    clusters = rows_to_dicts(
+        ["id", "label"],
+        db.fetch_all("SELECT id, label FROM clusters ORDER BY id"),
+    )
+    tags = rows_to_dicts(
+        ["id", "name"],
+        db.fetch_all("SELECT id, name FROM tags ORDER BY name"),
+    )
+    where, params = _home_where(filters)
+    rows = db.fetch_all(
+        ITEM_LIST_SQL + where + " ORDER BY items.description",
+        tuple(params),
+    )
+    results = _attach_tags(rows_to_dicts(ITEM_LIST_COLUMNS, rows))
     return render_template(
         "home.html",
-        search_term = search_term,
-        location = location_id,
-        locations = locations,
-        results=results)
+        search_term=filters["search"],
+        location_id=filters["location_id"],
+        cluster_id=filters["cluster_id"],
+        unclustered=filters["unclustered"],
+        tag_id=filters["tag_id"],
+        confidence_flag=filters["confidence_flag"],
+        locations=locations,
+        clusters=clusters,
+        tags=tags,
+        results=results,
+    )
 
-"""
-    For code below, the route and code having int = makes it so
-    that the URL captures the number and passes into the function.
-    Also makes it so a string never reaches the function
-"""
+
+@app.route("/scan")
+def scan_page():
+    """
+    Input: None.
+    Output: the in-browser QR scan page.
+    Details:
+        The page uses the vendored jsQR script and the device camera.
+    """
+    return render_template("scan.html")
+
 
 @app.route("/location/<int:location_id>")
 def location_page(location_id):
+    """
+    Input: location_id -- locations.id from the URL.
+    Output: the location page, or 404 when the row is missing.
+    Details:
+        The page lists items here, the parent location, and child locations.
+    """
     location_row = db.fetch_one(
-        "SELECT id, name, parent_location_id FROM locations where id = ?", (location_id,),
+        "SELECT id, name, parent_location_id FROM locations WHERE id = ?",
+        (location_id,),
     )
     if location_row is None:
         abort(404)
+    location = dict(zip(["id", "name", "parent_location_id"], location_row))
 
-    location=dict(zip(["id", "name", "parent_location_id"],location_row))
+    parent = None
+    if location["parent_location_id"] is not None:
+        parent_row = db.fetch_one(
+            "SELECT id, name FROM locations WHERE id = ?",
+            (location["parent_location_id"],),
+        )
+        if parent_row is not None:
+            parent = dict(zip(["id", "name"], parent_row))
 
-    item_columns=["id", "description", "confidence_score", "confidence_flag"]
-    item_rows = db.fetch_all(
-        "SELECT id, description, confidence_score, confidence_flag "
-        "FROM items WHERE location_id = ? ORDER BY description",
-        (location_id,),
+    children = rows_to_dicts(
+        ["id", "name"],
+        db.fetch_all(
+            "SELECT id, name FROM locations "
+            "WHERE parent_location_id = ? ORDER BY name",
+            (location_id,),
+        ),
+    )
+    items = rows_to_dicts(
+        ["id", "description", "confidence_score", "confidence_flag"],
+        db.fetch_all(
+            "SELECT id, description, confidence_score, confidence_flag "
+            "FROM items WHERE location_id = ? ORDER BY description",
+            (location_id,),
+        ),
+    )
+    return render_template(
+        "location.html",
+        location=location,
+        parent=parent,
+        children=children,
+        items=items,
     )
 
-    items = rows_to_dicts(item_columns, item_rows)
-
-    return render_template("location.html", location=location, items=items)
 
 @app.route("/item/<item_id>")
 def item_page(item_id):
-    # No "int:" here: items.id is a TEXT UUID (yours are "item-1" and so
-    # on), so the default string converter is the right one.
-
-    # LEFT JOIN on both tables: location_id and cluster_id can be NULL,
-    # and an item with neither must still show up on this page.
-    columns = ["id", "description", "confidence_score", "confidence_flag",
-               "date_processed", "location_id", "location_name", "cluster_label"]
+    """
+    Input: item_id -- items.id from the URL.
+    Output: the item page, or 404 when the row is missing.
+    Details:
+        location_id and cluster_id may be NULL. LEFT JOIN keeps the item.
+    """
+    columns = [
+        "id",
+        "description",
+        "confidence_score",
+        "confidence_flag",
+        "date_processed",
+        "location_id",
+        "location_name",
+        "cluster_label",
+    ]
     row = db.fetch_one(
         "SELECT items.id, items.description, items.confidence_score, "
         "items.confidence_flag, items.date_processed, items.location_id, "
@@ -177,19 +291,15 @@ def item_page(item_id):
     if row is None:
         abort(404)
     item = dict(zip(columns, row))
-
-    # Second query for tags: item_tags is the junction table, and the
-    # JOIN swaps each tag_id for its readable name. Each result row is a
-    # 1-tuple, so r[0] pulls the name out.
     tag_rows = db.fetch_all(
         "SELECT tags.name FROM item_tags "
         "JOIN tags ON item_tags.tag_id = tags.id "
         "WHERE item_tags.item_id = ? ORDER BY tags.name",
         (item_id,),
     )
-    tags = [r[0] for r in tag_rows]
-
+    tags = [tag_row[0] for tag_row in tag_rows]
     return render_template("item.html", item=item, tags=tags)
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5050, threaded=False)

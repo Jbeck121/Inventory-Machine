@@ -8,7 +8,6 @@ Description:
 """
 # Imports
 import asyncio
-import importlib
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -17,7 +16,9 @@ from uuid import uuid4
 
 from inventory_machine.config import load_config, ensure_output_dirs, get_timestamp
 from inventory_machine.db import Database
-from inventory_machine.preprocessing import collect_input_files
+from inventory_machine.preprocessing import (
+    collect_input_files, prepare_image, resolve_location_id,
+)
 from inventory_machine.vision.client import (
     VisionModelError, call_vision_model, store_vision_attempt,
 )
@@ -26,6 +27,7 @@ from inventory_machine.embedding.client import (
     embed_text, get_chroma_collection, store_embedding,
 )
 from inventory_machine.clustering import cluster_items
+from inventory_machine.labels import write_qr_labels
 
 # Globals
 logger = logging.getLogger(__name__)
@@ -51,63 +53,42 @@ def configure_logging(log_file: str) -> None:
     root.addHandler(handler)
 
 
-def _teammate_function(module_name: str, function_name: str, step: int, owner: str):
+def _image_file_stored(db, file_path: str) -> bool:
     """
-    Input: module_name, function_name -- where the function lives.
-        step -- pipeline step number. owner -- teammate and task ID.
-    Output: the function object.
+    Input: db -- open Database. file_path -- source photo path.
+    Output: True when images already has this file_path.
+    Details: Skips a rerun of a photo that already has an images row.
+    """
+    return db.fetch_one(
+        "SELECT 1 FROM images WHERE file_path = ?",
+        (file_path,),
+    ) is not None
+
+
+def _store_failed_vision_attempts(db, file_path: str, attempts) -> None:
+    """
+    Input: db -- open Database. file_path -- source photo path.
+        attempts -- (model, attempt number, raw text) rows.
+    Output: None.
+    Details: Writes audit rows with a NULL item_id in one transaction.
+    """
+    with db.transaction():
+        for model_name, attempt_number, raw_response in attempts:
+            asyncio.run(store_vision_attempt(
+                db, None, file_path, model_name, attempt_number, raw_response
+            ))
+
+
+def _persist_photo(db, cfg, photo, vision, attempts, score, vector, collection) -> None:
+    """
+    Input: db, cfg, photo metadata, vision result, attempts, score,
+        embedding vector, and Chroma collection.
+    Output: None.
     Details:
-        Raises RuntimeError with the missing function and its owner
-        if a teammate's function is not available yet.
+        Writes SQL rows then upserts Chroma in one transaction.
+        A Chroma error rolls back the SQL for this photo.
     """
-    module = importlib.import_module(module_name)
-    try:
-        return getattr(module, function_name)
-    except AttributeError as exc:
-        logger.exception("Missing %s.%s (%s)", module_name, function_name, owner)
-        raise RuntimeError(
-            f"pipeline step {step} needs {module_name}.{function_name} ({owner})"
-        ) from exc
-
-
-def run_pipeline(cfg, db) -> dict:
-    """
-    Input: cfg -- loaded config. db -- open Database with Option A schema.
-    Output: processed, failed, cluster_count, label_count, and run_id.
-    Details:
-        Inserts the run before it reads photos. Stores each item
-        before its dependent rows. Skips photos only if vision fails entirely.
-    """
-    snapshot = json.dumps({
-        section: dict(cfg.items(section)) for section in cfg.sections()
-    })
-    run_id = db.execute(
-        "INSERT INTO processing_runs (input_dir, config_snapshot, started_at) "
-        "VALUES (?, ?, ?)",
-        (cfg.get("paths", "input_dir"), snapshot, get_timestamp(cfg)),
-    ).lastrowid
-    processed = 0
-    failed = 0
-    collection = None
-    prepare_image = _teammate_function(
-        "inventory_machine.preprocessing", "prepare_image", 2, "Reece, R2"
-    )
-    resolve_location_id = _teammate_function(
-        "inventory_machine.preprocessing", "resolve_location_id", 5, "Reece, R3"
-    )
-    for photo in collect_input_files(cfg):
-        prepared_path = prepare_image(photo["file_path"], cfg)
-        try:
-            vision, attempts = asyncio.run(call_vision_model(prepared_path, cfg))
-        except VisionModelError as exc:
-            logger.warning(
-                "Vision failed for %s after %s attempts: %s",
-                photo["file_path"], len(exc.attempts), exc,
-            )
-            failed += 1
-            continue
-
-        score = score_item(vision["tags"], vision["confidence"], cfg)
+    with db.transaction():
         location_id = resolve_location_id(db, photo["location"], cfg)
         item_id = str(uuid4())
         db.execute(
@@ -118,7 +99,7 @@ def run_pipeline(cfg, db) -> dict:
         )
         for model_name, attempt_number, raw_response in attempts:
             asyncio.run(store_vision_attempt(
-                db, item_id, model_name, attempt_number, raw_response
+                db, item_id, photo["file_path"], model_name, attempt_number, raw_response
             ))
         db.execute(
             "INSERT INTO images (item_id, file_path, original_filename, width_px, "
@@ -141,25 +122,82 @@ def run_pipeline(cfg, db) -> dict:
                 (item_id, tag_id),
             )
         store_confidence(db, item_id, score)
-        if collection is None:
-            collection = get_chroma_collection(cfg)
-        vector = embed_text(" ".join([*tags, vision["description"]]), cfg)
         store_embedding(
             db, collection, item_id, vector, cfg.get("models", "embedding_model")
         )
-        processed += 1
+
+
+def _ingest_photo(cfg, db, photo, collection):
+    """
+    Input: cfg, db, photo record, and Chroma collection or None.
+    Output: the Chroma collection used for this photo.
+    Details:
+        Runs vision, scoring, and embedding before SQL.
+        Raises VisionModelError when vision fails.
+    """
+    prepared_path = prepare_image(photo["file_path"], cfg)
+    vision, attempts = asyncio.run(call_vision_model(prepared_path, cfg))
+    score = score_item(vision["tags"], vision["confidence"], cfg)
+    tags = list(dict.fromkeys(tag.strip().lower() for tag in vision["tags"] if tag.strip()))
+    vector = embed_text(" ".join([*tags, vision["description"]]), cfg)
+    if collection is None:
+        collection = get_chroma_collection(cfg)
+    _persist_photo(db, cfg, photo, vision, attempts, score, vector, collection)
+    return collection
+
+
+def run_pipeline(cfg, db) -> dict:
+    """
+    Input: cfg -- loaded config. db -- open Database with Option A schema.
+    Output: processed, failed, skipped, cluster_count, label_count, and run_id.
+    Details:
+        Inserts the run before it reads photos. Skips a photo when
+        images already has its file_path. Stores SQL and Chroma for
+        one photo in a single transaction.
+    """
+    snapshot = json.dumps({
+        section: dict(cfg.items(section)) for section in cfg.sections()
+    })
+    run_id = db.execute(
+        "INSERT INTO processing_runs (input_dir, config_snapshot, started_at) "
+        "VALUES (?, ?, ?)",
+        (cfg.get("paths", "input_dir"), snapshot, get_timestamp(cfg)),
+    ).lastrowid
+    processed = 0
+    failed = 0
+    skipped = 0
+    collection = None
+    for photo in collect_input_files(cfg):
+        if _image_file_stored(db, photo["file_path"]):
+            skipped += 1
+            continue
+        try:
+            collection = _ingest_photo(cfg, db, photo, collection)
+            processed += 1
+        except VisionModelError as exc:
+            logger.warning(
+                "Vision failed for %s after %s attempts: %s",
+                photo["file_path"], len(exc.attempts), exc,
+            )
+            try:
+                _store_failed_vision_attempts(db, photo["file_path"], exc.attempts)
+            except Exception:
+                logger.exception(
+                    "Failed to store vision attempts for %s", photo["file_path"]
+                )
+            failed += 1
+        except Exception:
+            logger.exception("Pipeline failed for photo %s", photo["file_path"])
+            failed += 1
 
     clusters = cluster_items(db, cfg)
-    write_qr_labels = _teammate_function(
-        "inventory_machine.labels", "write_qr_labels", 9, "Jesse, J2"
-    )
     label_count = write_qr_labels(db, cfg)
     db.execute(
         "UPDATE processing_runs SET item_count = ?, finished_at = ? WHERE id = ?",
         (processed, get_timestamp(cfg), run_id),
     )
     return {
-        "processed": processed, "failed": failed,
+        "processed": processed, "failed": failed, "skipped": skipped,
         "cluster_count": clusters["cluster_count"],
         "label_count": label_count, "run_id": run_id,
     }

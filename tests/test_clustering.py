@@ -6,12 +6,13 @@ Description:
     Tests HDBSCAN, SQL replacement, Chroma integration, and label retries.
 """
 # Imports
+import json
 import logging
 from configparser import ConfigParser
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import httpx
 import numpy as np
 import pytest
 
@@ -77,10 +78,6 @@ def synthetic_vectors():
     return vectors
 
 
-def response(text):
-    return SimpleNamespace(message=SimpleNamespace(content=text))
-
-
 def test_two_clusters_and_one_noise_item(cfg):
     assignments = run_clustering(synthetic_vectors(), cfg)
     assert assignments["outlier"] is None
@@ -126,7 +123,7 @@ def test_malformed_label_retries_then_writes_label(db, cfg):
     insert_item(db, "hammer", ("hammer", "steel", "hand tool"))
     insert_item(db, "wrench", ("wrench", "hand tool"))
     cluster_ids = write_clusters(db, {"hammer": 0, "wrench": 0})
-    chat = Mock(side_effect=[response("not json"), response('{"label": "Hand Tools"}')])
+    chat = Mock(side_effect=["not json", '{"label": "Hand Tools"}'])
     labels = label_clusters(db, cfg, {0: ["hammer", "wrench"]}, cluster_ids, chat=chat)
     assert labels == {0: "Hand Tools"}
     assert db.fetch_one("SELECT label FROM clusters WHERE id = ?", (cluster_ids[0],)) == ("Hand Tools",)
@@ -134,14 +131,14 @@ def test_malformed_label_retries_then_writes_label(db, cfg):
     prompt = chat.call_args.kwargs["messages"][0]
     assert "hammer" in prompt["content"] and "wrench" in prompt["content"]
     assert "images" not in prompt
-    assert chat.call_args.kwargs["format"] == "json"
+    assert "format" not in chat.call_args.kwargs
 
 
 def test_failed_label_uses_fallback_and_leaves_null(db, cfg):
     insert_item(db, "first", ("hammer",))
     insert_item(db, "second", ("pan",))
     cluster_ids = write_clusters(db, {"first": 0, "second": 1})
-    chat = Mock(side_effect=[response("{}"), response("[]"), response("bad json"), response('{"label": "Kitchen Pans"}')])
+    chat = Mock(side_effect=["{}", "[]", "bad json", '{"label": "Kitchen Pans"}'])
     labels = label_clusters(db, cfg, {0: ["first"], 1: ["second"]}, cluster_ids, chat=chat)
     assert labels == {0: None, 1: "Kitchen Pans"}
     assert [call.kwargs["model"] for call in chat.call_args_list] == [
@@ -149,6 +146,100 @@ def test_failed_label_uses_fallback_and_leaves_null(db, cfg):
     ]
     assert db.fetch_one("SELECT label FROM clusters WHERE id = ?", (cluster_ids[0],)) == (None,)
     assert db.fetch_one("SELECT label FROM clusters WHERE id = ?", (cluster_ids[1],)) == ("Kitchen Pans",)
+
+
+def test_cluster_label_http_5xx_reraises(db, cfg, monkeypatch):
+    monkeypatch.setenv("LITELLM_API_KEY", "test-key")
+    insert_item(db, "hammer", ("hammer", "steel"))
+    cluster_ids = write_clusters(db, {"hammer": 0})
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(500, json={"error": {"message": "server error"}})
+
+    transport = httpx.MockTransport(handler)
+    real = httpx.Client
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("inventory_machine.llm_gateway.httpx.Client", factory)
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        label_clusters(db, cfg, {0: ["hammer"]}, cluster_ids)
+    assert caught.value.response.status_code == 500
+    assert len(requests) == 1
+
+
+def test_cluster_label_default_chat_falls_back(db, cfg, monkeypatch):
+    monkeypatch.setenv("LITELLM_API_KEY", "test-key")
+    cfg["litellm"] = {
+        "base_url": "http://gateway.test:4000/v1",
+        "vision_model": "gateway-primary",
+        "embedding_model": "qwen3-embedding:0.6b",
+    }
+    insert_item(db, "hammer", ("hammer", "steel"))
+    cluster_ids = write_clusters(db, {"hammer": 0})
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.host == "localhost":
+            return httpx.Response(500, json={"error": {"message": "down"}})
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"label": "Hand Tools"}'}}]},
+        )
+
+    transport = httpx.MockTransport(handler)
+    real = httpx.Client
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("inventory_machine.llm_gateway.httpx.Client", factory)
+    labels = label_clusters(db, cfg, {0: ["hammer"]}, cluster_ids)
+    assert labels == {0: "Hand Tools"}
+    assert [str(req.url) for req in requests] == [
+        "http://localhost:11434/v1/chat/completions",
+        "http://gateway.test:4000/v1/chat/completions",
+    ]
+    assert "authorization" not in requests[0].headers
+    assert requests[1].headers["Authorization"] == "Bearer test-key"
+    assert json.loads(requests[1].content)["model"] == "gateway-primary"
+
+
+def test_cluster_label_http_5xx_survives_fallback(db, cfg, monkeypatch):
+    monkeypatch.setenv("LITELLM_API_KEY", "test-key")
+    cfg["litellm"] = {
+        "base_url": "http://gateway.test:4000/v1",
+        "vision_model": "gateway-primary",
+        "embedding_model": "qwen3-embedding:0.6b",
+    }
+    insert_item(db, "hammer", ("hammer", "steel"))
+    cluster_ids = write_clusters(db, {"hammer": 0})
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(500, json={"error": {"message": "server error"}})
+
+    transport = httpx.MockTransport(handler)
+    real = httpx.Client
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("inventory_machine.llm_gateway.httpx.Client", factory)
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        label_clusters(db, cfg, {0: ["hammer"]}, cluster_ids)
+    assert caught.value.response.status_code == 500
+    assert len(requests) == 2
+
+
 
 
 def test_cluster_items_reads_chroma_and_returns_summary(db, cfg):
@@ -167,3 +258,27 @@ def test_cluster_items_reads_chroma_and_returns_summary(db, cfg):
     assert result["labels"] == {0: "Hand Tools", 1: "Kitchen Gear"}
     assert all(len(items) == 3 for items in labeler.call_args.args[2].values())
     assert db.fetch_one("SELECT cluster_id FROM items WHERE id = ?", ("outlier",)) == (None,)
+
+
+def test_cluster_items_second_run_replaces_cluster_rows(db, cfg):
+    vectors = synthetic_vectors()
+    for item_id in vectors:
+        insert_item(db, item_id, ("tool",))
+    collection = Mock()
+    collection.get.return_value = {
+        "ids": list(vectors), "embeddings": list(vectors.values()),
+    }
+    with patch(
+        "inventory_machine.clustering.cluster.get_chroma_collection",
+        return_value=collection,
+    ), patch(
+        "inventory_machine.clustering.cluster.label_clusters", return_value={}
+    ):
+        first = cluster_items(db, cfg)
+        first_ids = {row[0] for row in db.fetch_all("SELECT id FROM clusters")}
+        second = cluster_items(db, cfg)
+        second_ids = {row[0] for row in db.fetch_all("SELECT id FROM clusters")}
+    assert first["cluster_count"] == 2
+    assert second["cluster_count"] == 2
+    assert len(second_ids) == 2
+    assert first_ids.isdisjoint(second_ids)

@@ -1,6 +1,7 @@
 [paths]
 input_dir = ./inventory_input
 qr_output_dir = ./inventory_output/qr_codes
+prepared_dir = ./inventory_output/prepared
 log_file = ./logs/inventory_machine.log
 
 [database]
@@ -19,6 +20,14 @@ vision_model = minicpm-v4.5
 vision_model_fallback = minicpm-v4.6
 embedding_model = qwen3-embedding:0.6b
 ollama_base_url = http://localhost:11434
+
+; Optional. The client uses this section only when Ollama fails. Set LITELLM_API_KEY in the environment.
+; [litellm]
+; base_url = http://<gateway host>:4000/v1
+; vision_model = minicpm-v4.5:latest
+; embedding_model = qwen3-embedding:0.6b
+; vision_model_fallback = minicpm-v4.5:latest
+
 
 [vision]
 max_retries = 3
@@ -39,7 +48,7 @@ min_samples = 1
 epsilon = 0.0
 
 [labels]
-qr_base_url = http://localhost:5000
+qr_base_url = http://localhost:5050
 label_width_mm = 62
 label_height_mm = 29
 

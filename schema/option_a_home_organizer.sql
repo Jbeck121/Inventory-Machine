@@ -80,9 +80,11 @@ CREATE TABLE embeddings_index (
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- file_path is the source photo. item_id is NULL when vision creates no item.
 CREATE TABLE vision_model_outputs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id         VARCHAR(36) NOT NULL REFERENCES items(id),
+    item_id         VARCHAR(36) REFERENCES items(id),
+    file_path       TEXT NOT NULL,
     model_name      TEXT NOT NULL,
     attempt_number  INTEGER NOT NULL,
     raw_response    TEXT NOT NULL,

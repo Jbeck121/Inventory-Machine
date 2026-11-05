@@ -1,10 +1,12 @@
 """Tests for confidence scoring and its SQLite persistence."""
 # Imports
 import configparser
+import json
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import httpx
 import pytest
 
 from inventory_machine.db import Database
@@ -89,15 +91,32 @@ def test_empty_tags_skip_embedding_and_clamp_self_report(tmp_path):
     assert result["confidence_score"] == pytest.approx(0.6)
 
 
-def test_embed_texts_uses_one_ollama_batch_call(tmp_path):
+def test_embed_texts_uses_one_gateway_batch_call(tmp_path, monkeypatch):
+    monkeypatch.setenv("LITELLM_API_KEY", "test-key")
     cfg = make_cfg(tmp_path)
-    client = MagicMock()
-    client.embed.return_value.embeddings = [[1.0, 0.0], [0.0, 1.0]]
-    with patch("inventory_machine.embedding.client.Client", return_value=client) as constructor:
-        vectors = embed_texts(["hammer", "tool"], cfg)
-    constructor.assert_called_once_with(host="http://localhost:11434")
-    client.embed.assert_called_once_with(model="qwen3-embedding:0.6b", input=["hammer", "tool"])
-    client.close.assert_called_once_with()
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={
+            "data": [
+                {"index": 0, "embedding": [1.0, 0.0]},
+                {"index": 1, "embedding": [0.0, 1.0]},
+            ]
+        })
+
+    transport = httpx.MockTransport(handler)
+    real = httpx.Client
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("inventory_machine.llm_gateway.httpx.Client", factory)
+    vectors = embed_texts(["hammer", "tool"], cfg)
+    assert len(requests) == 1
+    body = json.loads(requests[0].content)
+    assert body == {"model": "qwen3-embedding:0.6b", "input": ["hammer", "tool"]}
     assert vectors == [[1.0, 0.0], [0.0, 1.0]]
 
 

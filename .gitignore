@@ -61,6 +61,11 @@ dicts/*
 # --- Logs ---
 logs/
 
+# --- Pipeline output ---
+inventory_output/
+inventory_input/
+chroma_store/
+
 # --- Database ---
 *.db
 *.sqlite3cert.pem

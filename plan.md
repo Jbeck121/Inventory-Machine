@@ -77,13 +77,18 @@ flowchart TD
 ### Vision Model
 
 The pipeline calls `minicpm-v4.5` through Ollama by default. Team members
-whose hardware cannot run `minicpm-v4.5` use `minicpm-v4.6` instead. Both
-tags run through the same Ollama API, so the config file only needs to
-name the tag to use.
+whose hardware cannot run `minicpm-v4.5` use `minicpm-v4.6` instead. The
+pipeline uses Ollama's OpenAI-compatible API (`<ollama_base_url>/v1`), so
+the config file only needs to name the tag to use.
+
+If Ollama does not answer or returns an error, the pipeline can send the
+same request to an optional LiteLLM gateway. The `[litellm]` config
+section names the gateway URL and its model IDs. Without that section,
+the pipeline uses Ollama only.
 
 The pipeline calls the model once per photo, with a prompt that requests
-JSON output. Ollama enforces this with `"format": "json"` in the request
-body.
+JSON output. The request sets `"response_format": {"type": "json_object"}`.
+The image goes in the request as a base64 data URI.
 
 Prompt JSON structure:
 
@@ -114,7 +119,8 @@ Return exactly this structure:
 
 ### Embedding Model
 
-The pipeline calls `qwen3-embedding:0.6b` through Ollama. It converts
+The pipeline calls `qwen3-embedding:0.6b` through Ollama, with the same
+LiteLLM fallback. It converts
 each item's tags and description into one vector. ChromaDB stores and
 indexes these vectors for similarity search. The vision model already
 converted each photo to text, so the embedding step only needs a
@@ -275,7 +281,7 @@ unchanged. Full column definitions live in `schema/schema.sql`.
 | `item_tags` | Many-to-many bridge between items and tags |
 | `confidence_components` | The two weighted signals behind an item's confidence score |
 | `embeddings_index` | A pointer to the item's vector in ChromaDB, not the vector itself |
-| `vision_model_outputs` | Raw model responses, including retried attempts, for audit |
+| `vision_model_outputs` | Raw model responses, including retried attempts and failed photos (NULL `item_id`, with `file_path`), for audit |
 | `qr_labels` | Printed labels, each tied to a location or an item |
 | `processing_runs` | One row per pipeline run, with its config snapshot |
 
@@ -384,6 +390,7 @@ differ when the pipeline ingests a batch of older photos at once.
 [paths]
 input_dir = ./inventory_input
 qr_output_dir = ./inventory_output/qr_codes
+prepared_dir = ./inventory_output/prepared
 log_file = ./logs/inventory_machine.log
 
 [database]
@@ -402,6 +409,12 @@ vision_model = minicpm-v4.5
 vision_model_fallback = minicpm-v4.6
 embedding_model = qwen3-embedding:0.6b
 ollama_base_url = http://localhost:11434
+
+; optional: used only when Ollama fails. Key comes from env LITELLM_API_KEY.
+; [litellm]
+; base_url = http://<gateway host>:4000/v1
+; vision_model = minicpm-v4.5:latest
+; embedding_model = qwen3-embedding:0.6b
 
 [vision]
 max_retries = 3
@@ -492,7 +505,7 @@ to-MariaDB switch a one-line config change instead of a rewrite.
 Python 3.11+
 ├── ollama                  # local model serving (vision + embeddings)
 ├── Pillow                  # image preprocessing
-├── httpx                   # async calls to the Ollama API
+├── httpx                   # calls to Ollama's OpenAI-compatible API and the optional LiteLLM fallback
 ├── chromadb                # vector store for similarity search
 ├── hdbscan                 # clustering
 ├── scikit-learn            # fallback: KMeans, PCA for debug viz
@@ -510,9 +523,11 @@ Python 3.11+
 2. **Preprocess.** Resize each photo to `image_max_px` on its longest
    side.
 3. **Run vision inference.** POST each photo to the configured vision
-   model through Ollama, with the JSON-mode prompt. Retry up to
-   `max_retries` on malformed output. Store every raw response, retried
-   or not, in `vision_model_outputs`.
+   model through Ollama, with the JSON-mode prompt. If Ollama fails, the
+   optional LiteLLM fallback gets the same request. Retry up to
+   `max_retries` on malformed output. Store every raw response,
+   retried or not, in `vision_model_outputs`. A photo whose vision call
+   fails gets rows with a NULL `item_id` and its `file_path`.
 4. **Embed.** Run the embedding model on each item's tags joined with
    its description. Store the resulting vector in ChromaDB, and store a
    pointer to it in `embeddings_index`.

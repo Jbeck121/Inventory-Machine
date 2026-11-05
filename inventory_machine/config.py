@@ -77,9 +77,10 @@ def ensure_output_dirs(cfg: configparser.ConfigParser) -> None:
     Input: cfg -- a loaded ConfigParser.
     Output: None.
     Details:
-        Creates [paths] qr_output_dir and the parent directory of
-        [paths] log_file if they do not exist.
+        Creates [paths] qr_output_dir, [paths] prepared_dir, and the parent
+        directory of [paths] log_file if they do not exist.
         Does not create [paths] input_dir because it must hold photos.
     """
     Path(cfg.get("paths", "qr_output_dir")).mkdir(parents=True, exist_ok=True)
+    Path(cfg.get("paths", "prepared_dir")).mkdir(parents=True, exist_ok=True)
     Path(cfg.get("paths", "log_file")).parent.mkdir(parents=True, exist_ok=True)

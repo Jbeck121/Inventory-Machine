@@ -13,26 +13,30 @@ Baldwin, Kian Dong, and Reece Clem.
 
 ## Status
 
-The project has a working package under `inventory_machine/`. The test
-suite has 40 passing tests. It skips 1 MariaDB test unless you set
-`IM_MARIADB_DSN`. `pipeline.py` connects all 9 steps. Three teammate
-functions are not in the package yet. Until they are, the pipeline
-raises `RuntimeError` and names each missing function:
-`preprocessing.prepare_image` (resize),
-`preprocessing.resolve_location_id` (location rows), and
-`labels.write_qr_labels` (QR label rows).
+The pipeline runs end to end. `pipeline.py` runs all 9 steps against
+local Ollama, with an optional LiteLLM gateway as a fallback. The test
+suite has 97 passing tests. It skips 1 MariaDB test unless you set
+`IM_MARIADB_DSN`.
 
 - The `inventory_machine/` directory holds the package code. The
   `config.py` module loads and validates config. The `db.py` module
-  handles data access for SQLite and MariaDB. The `pipeline.py` module
-  connects the steps and `processing_runs`. The `preprocessing/`
-  directory walks folders and reads EXIF. The `vision/client.py` module
-  calls the Ollama vision model.
-
-  The `embedding/client.py` module calls the Ollama embedding model
-  and stores vectors in ChromaDB. The `scoring/` directory calculates
-  confidence scores. The `clustering/` directory runs HDBSCAN and
-  labels clusters. The `labels/` directory makes QR images.
+  handles data access for SQLite and MariaDB, with one transaction per
+  photo. The `pipeline.py` module connects the steps and
+  `processing_runs`, and skips photos that a past run stored.
+- The `preprocessing/` directory walks folders, reads EXIF date and GPS
+  data, resizes photos, and makes nested `locations` rows.
+- The `llm_gateway.py` module sends model requests to Ollama first,
+  and to the optional LiteLLM fallback if Ollama fails. The
+  `vision/client.py` module calls the vision model. The
+  `embedding/client.py` module calls the embedding model and stores
+  vectors in ChromaDB.
+- The `scoring/` directory calculates confidence scores. The
+  `clustering/` directory runs HDBSCAN and labels clusters. The
+  `labels/` directory makes 62 x 29 mm QR labels, writes `qr_labels`
+  rows, and puts the labels on printable US Letter sheets.
+- The `web-ui/` directory holds the Flask app: search, filters, the
+  location and item pages that QR codes open, and a camera QR scanner.
+  `web-ui/static/vendor/jsQR.js` is jsQR 1.4.0 (Apache-2.0).
 - `pyproject.toml` makes the package installable with
   `pip install -e ".[dev]"`.
 - `config.ini.example` shows every config section the code reads. Copy
@@ -99,7 +103,8 @@ before that member starts the affected work.
 ## Documentation
 
 - `plan.md`: the full technical plan.
-- `SETUP.md`: install and test instructions for a clean checkout.
+- `SETUP.md`: install, Ollama, optional LiteLLM fallback, pipeline,
+  label printing, and web UI instructions for a clean checkout.
 - `Ollama_Setup.md`: how to install Ollama and pull the models.
 - `schema/schema.sql`: the core MVP schema.
 - `schema/option_a_home_organizer.sql`, `schema/option_b_university_it.sql`,

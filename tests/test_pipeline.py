@@ -8,7 +8,7 @@ import pytest
 from PIL import Image
 
 from inventory_machine.db import Database
-from inventory_machine import pipeline, preprocessing, labels
+from inventory_machine import pipeline, preprocessing
 from inventory_machine.scoring import score_item
 from inventory_machine.vision.client import VisionModelError
 
@@ -74,9 +74,9 @@ def _install_teammates(monkeypatch):
             )
         return len(db.fetch_all("SELECT DISTINCT location_id FROM items"))
 
-    monkeypatch.setattr(preprocessing, "prepare_image", prepare, raising=False)
-    monkeypatch.setattr(preprocessing, "resolve_location_id", resolve, raising=False)
-    monkeypatch.setattr(labels, "write_qr_labels", write_labels, raising=False)
+    monkeypatch.setattr(pipeline, "prepare_image", prepare)
+    monkeypatch.setattr(pipeline, "resolve_location_id", resolve)
+    monkeypatch.setattr(pipeline, "write_qr_labels", write_labels)
     return prepared
 
 
@@ -107,14 +107,16 @@ def test_pipeline_persists_each_photo_and_reuses_tags_and_locations(tmp_path, mo
     collection = _install_services(monkeypatch)
 
     async def vision(path, cfg):
-        assert path.endswith(".resized")
         description = "Golf club" if "club" in path else "Kitchen spoon"
         raw = json.dumps({"tags": ["Metal", "metal", " Tool "], "description": description, "confidence": 0.8})
         return json.loads(raw), [("minicpm-v4.5", 1, "bad json"), ("minicpm-v4.5", 2, raw)]
 
     monkeypatch.setattr(pipeline, "call_vision_model", vision)
     result = pipeline.run_pipeline(cfg, db)
-    assert result == {"processed": 2, "failed": 0, "cluster_count": 1, "label_count": 2, "run_id": 1}
+    assert result == {
+        "processed": 2, "failed": 0, "skipped": 0, "cluster_count": 1,
+        "label_count": 2, "run_id": 1,
+    }
     assert len(prepared) == 2
     items = db.fetch_all("SELECT id, description, location_id, confidence_score, confidence_flag FROM items ORDER BY description")
     assert len(items) == 2
@@ -144,7 +146,10 @@ def test_pipeline_persists_each_photo_and_reuses_tags_and_locations(tmp_path, mo
     assert len(db.fetch_all("SELECT * FROM qr_labels")) == 2
 
     again = pipeline.run_pipeline(cfg, db)
-    assert again["processed"] == 2 and again["run_id"] == 2
+    assert again["processed"] == 0 and again["skipped"] == 2 and again["run_id"] == 2
+    assert len(prepared) == 2
+    assert len(db.fetch_all("SELECT * FROM items")) == 2
+    assert len(db.fetch_all("SELECT * FROM images")) == 2
     assert len(db.fetch_all("SELECT * FROM locations")) == 2
     assert len(db.fetch_all("SELECT * FROM tags")) == 2
     assert len(db.fetch_all("SELECT * FROM processing_runs")) == 2
@@ -169,26 +174,39 @@ def test_failed_vision_skips_item_and_counts_failure(tmp_path, monkeypatch):
     assert result["processed"] == 1 and result["failed"] == 1
     assert db.fetch_one("SELECT COUNT(*) FROM items") == (1,)
     assert db.fetch_one("SELECT COUNT(*) FROM images") == (1,)
-    assert db.fetch_one("SELECT COUNT(*) FROM vision_model_outputs") == (1,)
+    assert db.fetch_one("SELECT COUNT(*) FROM vision_model_outputs") == (2,)
+    failed_row = db.fetch_one(
+        "SELECT item_id, file_path FROM vision_model_outputs WHERE item_id IS NULL"
+    )
+    assert failed_row is not None
+    assert failed_row[0] is None
+    assert failed_row[1].endswith("spoon.jpg")
     assert db.fetch_one("SELECT item_count FROM processing_runs") == (1,)
 
 
-@pytest.mark.parametrize("module,missing,owner", [
-    (preprocessing, "prepare_image", "Reece, R2"),
-    (preprocessing, "resolve_location_id", "Reece, R3"),
-    (labels, "write_qr_labels", "Jesse, J2"),
-])
-def test_missing_teammate_function_names_owner(tmp_path, monkeypatch, module, missing, owner):
+def test_chroma_failure_rolls_back_photo_rows(tmp_path, monkeypatch):
     cfg = _config(tmp_path)
     _photos(cfg)
     db = _db(cfg)
     _install_teammates(monkeypatch)
     _install_services(monkeypatch)
 
+    class BoomCollection(FakeCollection):
+        def upsert(self, ids, embeddings):
+            raise RuntimeError("chroma down")
+
+    monkeypatch.setattr(pipeline, "get_chroma_collection", lambda cfg: BoomCollection())
+
     async def vision(path, cfg):
-        return {"tags": ["metal"], "description": "Club", "confidence": 0.8}, []
+        return {"tags": ["metal"], "description": "Golf club", "confidence": 0.8}, [
+            ("minicpm-v4.5", 1, "valid")
+        ]
 
     monkeypatch.setattr(pipeline, "call_vision_model", vision)
-    monkeypatch.delattr(module, missing)
-    with pytest.raises(RuntimeError, match=rf"{missing}.*{owner}"):
-        pipeline.run_pipeline(cfg, db)
+    result = pipeline.run_pipeline(cfg, db)
+    assert result["processed"] == 0 and result["failed"] == 2
+    assert db.fetch_one("SELECT COUNT(*) FROM items") == (0,)
+    assert db.fetch_one("SELECT COUNT(*) FROM images") == (0,)
+    assert db.fetch_one("SELECT COUNT(*) FROM tags") == (0,)
+    assert db.fetch_one("SELECT COUNT(*) FROM item_tags") == (0,)
+    assert db.fetch_one("SELECT COUNT(*) FROM vision_model_outputs") == (0,)
