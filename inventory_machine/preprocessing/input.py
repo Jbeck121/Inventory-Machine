@@ -154,7 +154,7 @@ def extract_photo_metadata(image_path: str | Path) -> dict:
 
             gps_lat = None
             gps_lon = None
-            gps_info = exif.get(34853)
+            gps_info = exif.get_ifd(0x8825)
             if isinstance(gps_info, dict):
                 gps_lat = _gps_to_decimal(gps_info.get(2), gps_info.get(1))
                 gps_lon = _gps_to_decimal(gps_info.get(4), gps_info.get(3))

@@ -56,3 +56,22 @@ def test_extract_photo_metadata_reads_exif_date_taken(tmp_path):
     assert metadata["date_taken"] == "2024-05-06T07:08:09"
     assert metadata["gps_lat"] is None
     assert metadata["gps_lon"] is None
+
+
+def test_extract_photo_metadata_reads_gps_from_exif_ifd(tmp_path):
+    image_path = tmp_path / "gps_sample.jpg"
+    image = Image.new("RGB", (32, 32), color="blue")
+    exif = Image.Exif()
+    exif[36867] = "2024:05:06 07:08:09"
+    exif[34853] = {
+        1: "N",
+        2: (32.0, 18.0, 45.0),
+        3: "W",
+        4: (84.0, 22.0, 33.0),
+    }
+    image.save(image_path, exif=exif)
+
+    metadata = extract_photo_metadata(image_path)
+
+    assert metadata["gps_lat"] == 32.3125
+    assert metadata["gps_lon"] == -84.375833
