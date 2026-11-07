@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import configparser
+import logging
 from pathlib import Path
 
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -168,6 +171,7 @@ def extract_photo_metadata(image_path: str | Path) -> dict:
                 "height_px": height_px,
             }
     except (FileNotFoundError, OSError, ValueError):
+        logger.warning("Failed to read EXIF metadata for %s", path, exc_info=True)
         return {"date_taken": None, "gps_lat": None, "gps_lon": None, "width_px": None, "height_px": None}
 
 
