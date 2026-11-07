@@ -190,6 +190,31 @@ def prepare_image(image_path: str | Path, cfg: configparser.ConfigParser) -> str
     return str(output_path)
 
 
+def resolve_location_id(db, location_name: str, cfg: configparser.ConfigParser | None = None) -> int:
+    """Create nested locations and return the final location id without duplicating rows."""
+    if not location_name:
+        raise ValueError("location_name is required")
+
+    separator = " > "
+    prefixes: tuple[str, ...] = ()
+    if cfg is not None:
+        separator = cfg.get("location", "folder_separator", fallback=" > ")
+        raw_prefixes = cfg.get("location", "strip_prefixes", fallback="")
+        prefixes = tuple(part.strip() for part in raw_prefixes.split(",") if part.strip())
+
+    parts = [part.strip() for part in location_name.split(separator) if part.strip()]
+    if not parts:
+        raise ValueError(f"Invalid location name: {location_name!r}")
+
+    parent_id: int | None = None
+    final_id: int | None = None
+    for part in parts:
+        cleaned = _strip_folder_prefixes(part, prefixes)
+        final_id = db.get_or_create_location(cleaned, parent_id)
+        parent_id = final_id
+    return final_id
+
+
 def collect_input_files(cfg: configparser.ConfigParser) -> list[dict]:
     """Walk the configured input folder and return one metadata record per photo."""
     input_dir = cfg.get("paths", "input_dir")

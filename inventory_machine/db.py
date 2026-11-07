@@ -182,6 +182,26 @@ class Database:
         """
         return self._conn
 
+    def get_or_create_location(self, name: str, parent_location_id: int | None = None) -> int:
+        """Return the location id for a name/parent pair, creating it if needed."""
+        if parent_location_id is None:
+            row = self.fetch_one(
+                "SELECT id FROM locations WHERE name = ? AND parent_location_id IS NULL",
+                (name,),
+            )
+        else:
+            row = self.fetch_one(
+                "SELECT id FROM locations WHERE name = ? AND parent_location_id = ?",
+                (name, parent_location_id),
+            )
+        if row is not None:
+            return row[0]
+        cursor = self.execute(
+            "INSERT INTO locations (name, parent_location_id) VALUES (?, ?)",
+            (name, parent_location_id),
+        )
+        return cursor.lastrowid
+
     def _parameterized_query(self, query: str) -> str:
         """
         Input: query -- SQL using SQLite-style ? bind markers.

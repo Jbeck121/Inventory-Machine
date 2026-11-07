@@ -3,10 +3,12 @@ from pathlib import Path
 
 from PIL import Image
 
+from inventory_machine.db import Database
 from inventory_machine.preprocessing.input import (
     extract_photo_metadata,
     find_image_files,
     prepare_image,
+    resolve_location_id,
     resolve_location_name,
 )
 
@@ -89,3 +91,22 @@ def test_prepare_image_resizes_to_vision_max_pixel_limit(tmp_path):
     with Image.open(resized_path) as resized:
         assert max(resized.size) <= 1024
         assert resized.size[0] == 1024 or resized.size[1] == 1024
+
+
+def test_resolve_location_id_creates_nested_locations_once(tmp_path):
+    cfg = configparser.ConfigParser(interpolation=None)
+    cfg["location"] = {"folder_separator": " > ", "strip_prefixes": "img_, scan_, batch_"}
+    db_cfg = configparser.ConfigParser(interpolation=None)
+    db_cfg["database"] = {"backend": "sqlite", "sqlite_path": str(tmp_path / "locations.db")}
+    db = Database(db_cfg)
+    db.load_schema(str(Path(__file__).resolve().parents[1] / "schema" / "schema.sql"))
+
+    first_id = resolve_location_id(db, "garage > shelf_a", cfg)
+    second_id = resolve_location_id(db, "garage > shelf_a", cfg)
+    final_id = resolve_location_id(db, "garage > shelf_a > bin_1", cfg)
+
+    assert first_id == second_id
+    assert final_id is not None
+    assert db.fetch_one("SELECT COUNT(*) FROM locations WHERE name = ?", ("garage",)) == (1,)
+    assert db.fetch_one("SELECT COUNT(*) FROM locations WHERE name = ?", ("shelf_a",)) == (1,)
+    assert db.fetch_one("SELECT COUNT(*) FROM locations WHERE name = ?", ("bin_1",)) == (1,)
