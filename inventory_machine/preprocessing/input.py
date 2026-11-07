@@ -171,6 +171,25 @@ def extract_photo_metadata(image_path: str | Path) -> dict:
         return {"date_taken": None, "gps_lat": None, "gps_lon": None, "width_px": None, "height_px": None}
 
 
+def prepare_image(image_path: str | Path, cfg: configparser.ConfigParser) -> str:
+    """Resize the source image to the configured max pixel size and return the output path."""
+    source = Path(image_path)
+    max_px = int(cfg.get("vision", "image_max_px", fallback="1024"))
+    output_path = source.with_name(f"{source.name}.resized")
+
+    with Image.open(source) as image:
+        if max(image.size) <= max_px:
+            resized = image.copy()
+        else:
+            scale = max_px / max(image.size)
+            new_size = tuple(max(1, int(round(dim * scale))) for dim in image.size)
+            resized = image.resize(new_size, Image.Resampling.LANCZOS)
+        resized_format = image.format or "JPEG"
+        resized.save(output_path, format=resized_format, quality=95)
+
+    return str(output_path)
+
+
 def collect_input_files(cfg: configparser.ConfigParser) -> list[dict]:
     """Walk the configured input folder and return one metadata record per photo."""
     input_dir = cfg.get("paths", "input_dir")

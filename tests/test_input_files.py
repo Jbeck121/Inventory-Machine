@@ -6,6 +6,7 @@ from PIL import Image
 from inventory_machine.preprocessing.input import (
     extract_photo_metadata,
     find_image_files,
+    prepare_image,
     resolve_location_name,
 )
 
@@ -75,3 +76,16 @@ def test_extract_photo_metadata_reads_gps_from_exif_ifd(tmp_path):
 
     assert metadata["gps_lat"] == 32.3125
     assert metadata["gps_lon"] == -84.375833
+
+
+def test_prepare_image_resizes_to_vision_max_pixel_limit(tmp_path):
+    source = tmp_path / "large.jpg"
+    Image.new("RGB", (4000, 2000), color="green").save(source)
+    cfg = configparser.ConfigParser(interpolation=None)
+    cfg["vision"] = {"image_max_px": "1024"}
+
+    resized_path = prepare_image(source, cfg)
+
+    with Image.open(resized_path) as resized:
+        assert max(resized.size) <= 1024
+        assert resized.size[0] == 1024 or resized.size[1] == 1024
